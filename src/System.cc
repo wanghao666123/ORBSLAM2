@@ -29,9 +29,29 @@
 namespace ORB_SLAM2
 {
 
+/**
+ * @brief 负责管理 SLAM 系统的核心功能，如初始化、跟踪和地图构建。
+ * 
+ * @param strVocFile 导入进来的字典文件（const string类型）。
+ * @param strSettingsFile 导入进来的配置文件（const string类型）。
+ * @param sensor 视觉传感器类型（const eSensor类型）这里选择为MONOCULAR。
+ * @param bUseViewer 启用可视化窗口（const bool类型）这里选择为true。
+ * 
+ * @return 无。
+ * 
+ * @note mSensor(sensor)：初始化成员变量 mSensor，将传入的 sensor 参数赋值给它，MONOCULAR。
+ * @note mpViewer(static_cast<Viewer*>(NULL))：初始化成员变量 mpViewer，将其设置为 NULL。mpViewer 是一个指向 Viewer 类的指针，表示可视化窗口
+ * @note mbReset(false)：初始化成员变量 mbReset，表示是否重置系统，初始值为 false。
+ * @note mbActivateLocalizationMode(false)：表示是否激活本地化模式，初始值为 false。
+ * @note mbDeactivateLocalizationMode(false)：表示是否停用本地化模式，初始值为 false。
+ */
 System::System(const string &strVocFile, const string &strSettingsFile, const eSensor sensor,
-               const bool bUseViewer):mSensor(sensor), mpViewer(static_cast<Viewer*>(NULL)), mbReset(false),mbActivateLocalizationMode(false),
-        mbDeactivateLocalizationMode(false)
+               const bool bUseViewer)
+               :mSensor(sensor), 
+                mpViewer(static_cast<Viewer*>(NULL)), 
+                mbReset(false),
+                mbActivateLocalizationMode(false),
+                mbDeactivateLocalizationMode(false)
 {
     // Output welcome message
     cout << endl <<
