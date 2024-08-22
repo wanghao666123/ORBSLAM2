@@ -49,7 +49,7 @@ Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer,
     mpFrameDrawer(pFrameDrawer), mpMapDrawer(pMapDrawer), mpMap(pMap), mnLastRelocFrameId(0)
 {
     // Load camera parameters from settings file
-
+    // ! Step 1 从配置文件中加载相机参数
     cv::FileStorage fSettings(strSettingPath, cv::FileStorage::READ);
     float fx = fSettings["Camera.fx"];
     float fy = fSettings["Camera.fy"];
@@ -110,12 +110,14 @@ Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer,
 
     // Load ORB parameters
 
+    // ! Step 2 加载ORB特征点有关的参数,并新建特征点提取器
+
     int nFeatures = fSettings["ORBextractor.nFeatures"];
     float fScaleFactor = fSettings["ORBextractor.scaleFactor"];
     int nLevels = fSettings["ORBextractor.nLevels"];
     int fIniThFAST = fSettings["ORBextractor.iniThFAST"];
     int fMinThFAST = fSettings["ORBextractor.minThFAST"];
-
+    // ! Step 2.1 特征点提取器中制作两件事 1. 计算金字塔每层需要分配的特征点数目 2.计算umax用于之后的计算特征点方向
     mpORBextractorLeft = new ORBextractor(nFeatures,fScaleFactor,nLevels,fIniThFAST,fMinThFAST);
 
     if(sensor==System::STEREO)
@@ -585,7 +587,7 @@ void Tracking::MonocularInitialization()
         }
     }
     else
-    {
+    {   //TODO:这里先待定
         // Try to initialize
         if((int)mCurrentFrame.mvKeys.size()<=100)
         {

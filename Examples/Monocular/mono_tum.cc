@@ -46,9 +46,11 @@ void LoadImages(const string &strFile, vector<string> &vstrImageFilenames,
  * Examples/Monocular/TUM1.yaml：用来指定程序的设置文件的路径或者文件名。
  * data/rgbd_dataset_freiburg1_xyz：指定程序需要处理的数据序列的路径。
  */
+//! orbslam2 单目的主函数，也就是程序入口
 int main(int argc, char **argv)
 {
-    if(argc != 4)//需要保证命令参数个数为4
+    //! 判断入口参数数目
+    if(argc != 4)
     {
         cerr << endl << "Usage: ./mono_tum path_to_vocabulary path_to_settings path_to_sequence" << endl;
         return 1;
@@ -59,13 +61,22 @@ int main(int argc, char **argv)
     vector<double> vTimestamps;
     string strFile = string(argv[3])+"/rgb.txt";
 
-    LoadImages(strFile, vstrImageFilenames, vTimestamps);//成功加载文件名和时间戳
+    //! 加载文件名和时间戳
+    LoadImages(strFile, vstrImageFilenames, vTimestamps);
 
-    int nImages = vstrImageFilenames.size();             //返回 vstrImageFilenames 中的字符串元素的数量。
+    int nImages = vstrImageFilenames.size();            
 
+    //! 初始化整个slam系统
+    //! 1. 根据第三方库建立一个新的ORB字典，生成树，暂时先不管
+    //! 2. 根据预训练好的字典大小设置关键帧数据库，位置后的重定位和回环检测做准备
+    //! 3. 创建地图信息
+    //! 4. 创建帧绘制器和地图绘制器将会被可视化的Viewer所使用 先不管
+    //! 5. 创建tracking线程
+    //! 6. 创建mpLocalMapper线程(待定)
+    //! 7. 创建mpLoopCloser线程(待定)
+    //! 8. 创建mptViewer线程
+    //! 9. 设置进程间的指针
     // Create SLAM system. It initializes all system threads and gets ready to process frames.
-    // ORB_SLAM2::System代表命名空间ORB_SLAM2下的System类
-    // System(const string &strVocFile, const string &strSettingsFile, const eSensor sensor, const bool bUseViewer = true);
     ORB_SLAM2::System SLAM(argv[1],argv[2],ORB_SLAM2::System::MONOCULAR,true);
 
     // Vector for tracking time statistics
@@ -163,7 +174,7 @@ void LoadImages(const string &strFile, vector<string> &vstrImageFilenames, vecto
     getline(f,s0);
 
     while(!f.eof())//循环读取文件直到文件末尾
-    {
+    {   
         string s;
         getline(f,s);//读取文件的每一行到字符串 s 中。
         if(!s.empty())//如果字符串 s 不为空，表示读取成功

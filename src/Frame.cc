@@ -188,13 +188,14 @@ Frame::Frame(const cv::Mat &imGray, const double &timeStamp, ORBextractor* extra
     mvInvLevelSigma2 = mpORBextractorLeft->GetInverseScaleSigmaSquares();
 
     // ORB extraction
+    //!提取fast角点和描述子
     ExtractORB(0,imGray);
 
     N = mvKeys.size();
 
     if(mvKeys.empty())
         return;
-
+    //!去畸变
     UndistortKeyPoints();
 
     // Set no stereo information
@@ -207,6 +208,7 @@ Frame::Frame(const cv::Mat &imGray, const double &timeStamp, ORBextractor* extra
     // This is done only for the first Frame (or after a change in the calibration)
     if(mbInitialComputations)
     {
+        //!计算去畸变后图像的边界
         ComputeImageBounds(imGray);
 
         mfGridElementWidthInv=static_cast<float>(FRAME_GRID_COLS)/static_cast<float>(mnMaxX-mnMinX);
@@ -223,7 +225,7 @@ Frame::Frame(const cv::Mat &imGray, const double &timeStamp, ORBextractor* extra
     }
 
     mb = mbf/fx;
-
+    //!将去畸变之后的特征点均匀分布在64*48的网格中，为之后的特征匹配做准备
     AssignFeaturesToGrid();
 }
 
