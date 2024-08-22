@@ -1350,8 +1350,8 @@ bool TemplatedVocabulary<TDescriptor,F>::loadFromTextFile(const std::string &fil
     getline(f,s);
     stringstream ss;
     ss << s;
-    ss >> m_k;
-    ss >> m_L;
+    ss >> m_k; // !树的分支数目
+    ss >> m_L; // !树的深度
     int n1, n2;
     ss >> n1;
     ss >> n2;
@@ -1362,8 +1362,9 @@ bool TemplatedVocabulary<TDescriptor,F>::loadFromTextFile(const std::string &fil
 	return false;
     }
     
-    m_scoring = (ScoringType)n1;
-    m_weighting = (WeightingType)n2;
+    m_scoring = (ScoringType)n1;     // !评分类型
+    m_weighting = (WeightingType)n2; // !权重类型 
+    
     createScoringObject();
 
     // nodes

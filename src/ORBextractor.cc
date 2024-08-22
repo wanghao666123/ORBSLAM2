@@ -412,6 +412,7 @@ ORBextractor::ORBextractor(int _nfeatures, float _scaleFactor, int _nlevels,
     nfeatures(_nfeatures), scaleFactor(_scaleFactor), nlevels(_nlevels),
     iniThFAST(_iniThFAST), minThFAST(_minThFAST)
 {
+    //!计算金字塔每层需要分配的特征点数目
     mvScaleFactor.resize(nlevels);
     mvLevelSigma2.resize(nlevels);
     mvScaleFactor[0]=1.0f;
@@ -449,6 +450,7 @@ ORBextractor::ORBextractor(int _nfeatures, float _scaleFactor, int _nlevels,
     const Point* pattern0 = (const Point*)bit_pattern_31_;
     std::copy(pattern0, pattern0 + npoints, std::back_inserter(pattern));
 
+    //!计算umax
     //This is for orientation
     // pre-compute the end of a row in a circular patch
     umax.resize(HALF_PATCH_SIZE + 1);
@@ -804,7 +806,7 @@ void ORBextractor::ComputeKeyPointsOctTree(vector<vector<KeyPoint> >& allKeypoin
                     continue;
                 if(maxX>maxBorderX)
                     maxX = maxBorderX;
-
+                //!fast角点提取关键点
                 vector<cv::KeyPoint> vKeysCell;
                 FAST(mvImagePyramid[level].rowRange(iniY,maxY).colRange(iniX,maxX),
                      vKeysCell,iniThFAST,true);
@@ -827,7 +829,7 @@ void ORBextractor::ComputeKeyPointsOctTree(vector<vector<KeyPoint> >& allKeypoin
 
             }
         }
-
+        //!采用四叉树均匀划分当前层的特征点，删除一些特征点
         vector<KeyPoint> & keypoints = allKeypoints[level];
         keypoints.reserve(nfeatures);
 
@@ -846,7 +848,7 @@ void ORBextractor::ComputeKeyPointsOctTree(vector<vector<KeyPoint> >& allKeypoin
             keypoints[i].size = scaledPatchSize;
         }
     }
-
+    //!计算质心。即计算旋转方向，为之后的描述子做准备
     // compute orientations
     for (int level = 0; level < nlevels; ++level)
         computeOrientation(mvImagePyramid[level], allKeypoints[level], umax);
@@ -1050,8 +1052,9 @@ void ORBextractor::operator()( InputArray _image, InputArray _mask, vector<KeyPo
     assert(image.type() == CV_8UC1 );
 
     // Pre-compute the scale pyramid
+    //!对图像金字塔每一层的图像都进行扩充
     ComputePyramid(image);
-
+    //!计算fast角点，利用四叉树删减特征点，计算旋转方向，为之后的计算描述子做准备
     vector < vector<KeyPoint> > allKeypoints;
     ComputeKeyPointsOctTree(allKeypoints);
     //ComputeKeyPointsOld(allKeypoints);
@@ -1082,11 +1085,13 @@ void ORBextractor::operator()( InputArray _image, InputArray _mask, vector<KeyPo
             continue;
 
         // preprocess the resized image
+        //!高斯模糊化
         Mat workingMat = mvImagePyramid[level].clone();
         GaussianBlur(workingMat, workingMat, Size(7, 7), 2, 2, BORDER_REFLECT_101);
 
         // Compute the descriptors
         Mat desc = descriptors.rowRange(offset, offset + nkeypointsLevel);
+        //!计算描述子
         computeDescriptors(workingMat, keypoints, desc, pattern);
 
         offset += nkeypointsLevel;
@@ -1100,6 +1105,7 @@ void ORBextractor::operator()( InputArray _image, InputArray _mask, vector<KeyPo
                 keypoint->pt *= scale;
         }
         // And add the keypoints to the output
+        // keypoint其实是对allkeypoints中每层图像中特征点的引用，这样allkeypoints中的所有特征点在这里被转存到输出的_keypoints
         _keypoints.insert(_keypoints.end(), keypoints.begin(), keypoints.end());
     }
 }

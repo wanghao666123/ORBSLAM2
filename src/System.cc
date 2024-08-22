@@ -81,6 +81,7 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
     //Load ORB Vocabulary
     cout << endl << "Loading ORB Vocabulary. This could take a while..." << endl;
 
+    //!根据第三方库建立一个新的ORB字典，生成树，暂时先不管
     mpVocabulary = new ORBVocabulary();
     bool bVocLoad = mpVocabulary->loadFromTextFile(strVocFile);
     if(!bVocLoad)
@@ -92,35 +93,44 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
     cout << "Vocabulary loaded!" << endl << endl;
 
     //Create KeyFrame Database
+    //! 根据预训练好的字典大小设置关键帧数据库，位置后的重定位和回环检测做准备，并且将mpKeyFrameDatabase指向该数据库
     mpKeyFrameDatabase = new KeyFrameDatabase(*mpVocabulary);
 
     //Create the Map
+    //! 创建地图信息，初始化变量mnMaxKFid和mnBigChangeIdx，并且将指针mpMap指向该地图信息
     mpMap = new Map();
-
+    
+    //! 这里的帧绘制器和地图绘制器将会被可视化的Viewer所使用 先不管
     //Create Drawers. These are used by the Viewer
     mpFrameDrawer = new FrameDrawer(mpMap);
     mpMapDrawer = new MapDrawer(mpMap, strSettingsFile);
 
     //Initialize the Tracking thread
+    //! 创建tracking线程，大概做了几件事：1. 从配置文件中加载相机参数 
+    //!                               2. 加载ORB特征点有关的参数,并新建特征点提取器(1. 计算金字塔每层需要分配的特征点数目 2.计算umax用于之后的计算特征点方向)
     //(it will live in the main thread of execution, the one that called this constructor)
     mpTracker = new Tracking(this, mpVocabulary, mpFrameDrawer, mpMapDrawer,
                              mpMap, mpKeyFrameDatabase, strSettingsFile, mSensor);
-
+    
     //Initialize the Local Mapping thread and launch
+    //! 创建mpLocalMapper线程
     mpLocalMapper = new LocalMapping(mpMap, mSensor==MONOCULAR);
     mptLocalMapping = new thread(&ORB_SLAM2::LocalMapping::Run,mpLocalMapper);
 
     //Initialize the Loop Closing thread and launch
+    //! 创建mpLoopCloser线程
     mpLoopCloser = new LoopClosing(mpMap, mpKeyFrameDatabase, mpVocabulary, mSensor!=MONOCULAR);
     mptLoopClosing = new thread(&ORB_SLAM2::LoopClosing::Run, mpLoopCloser);
 
     //Initialize the Viewer thread and launch
+    //! 创建mptViewer线程
     if(bUseViewer)
     {
         mpViewer = new Viewer(this, mpFrameDrawer,mpMapDrawer,mpTracker,strSettingsFile);
         mptViewer = new thread(&Viewer::Run, mpViewer);
         mpTracker->SetViewer(mpViewer);
     }
+    //!设置进程间的指针
 
     //Set pointers between threads
     mpTracker->SetLocalMapper(mpLocalMapper);
