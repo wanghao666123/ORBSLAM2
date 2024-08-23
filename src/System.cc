@@ -252,10 +252,11 @@ cv::Mat System::TrackMonocular(const cv::Mat &im, const double &timestamp)
         cerr << "ERROR: you called TrackMonocular but input sensor was not set to Monocular." << endl;
         exit(-1);
     }
-
+    //! step1：检查是否开启纯定位或停用纯定位模式
     // Check mode change
     {
         unique_lock<mutex> lock(mMutexMode);
+        //! 检查是否开启纯定位模式（暂不管，一般不用）
         if(mbActivateLocalizationMode)
         {
             mpLocalMapper->RequestStop();
@@ -269,6 +270,7 @@ cv::Mat System::TrackMonocular(const cv::Mat &im, const double &timestamp)
             mpTracker->InformOnlyTracking(true);
             mbActivateLocalizationMode = false;
         }
+        //! 检查是否停用纯定位模式（暂不管，一般不用）
         if(mbDeactivateLocalizationMode)
         {
             mpTracker->InformOnlyTracking(false);
@@ -276,7 +278,7 @@ cv::Mat System::TrackMonocular(const cv::Mat &im, const double &timestamp)
             mbDeactivateLocalizationMode = false;
         }
     }
-
+    //! step2：检查是否
     // Check reset
     {
     unique_lock<mutex> lock(mMutexReset);

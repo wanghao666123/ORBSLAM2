@@ -86,7 +86,7 @@ int main(int argc, char **argv)
     cout << endl << "-------" << endl;
     cout << "Start processing sequence ..." << endl;
     cout << "Images in the sequence: " << nImages << endl << endl;
-
+    //! 主循环，主要是进行追踪线程
     // Main loop
     cv::Mat im;
     for(int ni=0; ni<nImages; ni++)
@@ -109,6 +109,7 @@ int main(int argc, char **argv)
 #endif
 
         // Pass the image to the SLAM system
+        //! 重要，追踪线程
         SLAM.TrackMonocular(im,tframe);
 
 #ifdef COMPILEDWITHC11
