@@ -176,15 +176,23 @@ Frame::Frame(const cv::Mat &imGray, const double &timeStamp, ORBextractor* extra
      mTimeStamp(timeStamp), mK(K.clone()),mDistCoef(distCoef.clone()), mbf(bf), mThDepth(thDepth)
 {
     // Frame ID
+    //! 每一帧图像的ID自增
     mnId=nNextId++;
 
     // Scale Level Info
+    //! 金字塔层数
     mnScaleLevels = mpORBextractorLeft->GetLevels();
+    //! 金字塔的缩放因子 1.2
     mfScaleFactor = mpORBextractorLeft->GetScaleFactor();
+    //! 金字塔的缩放因子的log 
     mfLogScaleFactor = log(mfScaleFactor);
+    //! 金字塔每一层的缩放因子 
     mvScaleFactors = mpORBextractorLeft->GetScaleFactors();
+    //! 金字塔每一层的缩放因子的倒数 
     mvInvScaleFactors = mpORBextractorLeft->GetInverseScaleFactors();
+    //! 获取sigma^2
     mvLevelSigma2 = mpORBextractorLeft->GetScaleSigmaSquares();
+    //! 获取sigma^2的倒数
     mvInvLevelSigma2 = mpORBextractorLeft->GetInverseScaleSigmaSquares();
 
     // ORB extraction

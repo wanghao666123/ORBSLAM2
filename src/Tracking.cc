@@ -241,6 +241,7 @@ cv::Mat Tracking::GrabImageMonocular(const cv::Mat &im, const double &timestamp)
 {
     mImGray = im;
 
+    //! Step 1 ：将彩色图像转为灰度图像，判断排列顺序是RGB还是BGR还有通道数是3通道还是4通道
     if(mImGray.channels()==3)
     {
         if(mbRGB)
@@ -255,12 +256,19 @@ cv::Mat Tracking::GrabImageMonocular(const cv::Mat &im, const double &timestamp)
         else
             cvtColor(mImGray,mImGray,CV_BGRA2GRAY);
     }
-
+    //! Step 2 ：如果当前跟踪状态为有图像但是没有完成初始化 或者 是当前无图像（刚开始初始化默认就是NO_IMAGES_YET）
+    //! 由于单目摄像头需要进行一段时间的初始化用于得到计算出来的深度信息，所以为了计算准确，在初始化阶段会提取2倍的指定特征点数目
+    //! Step 2.1 :构建图像金字塔（每层保存的都是扩充之后的图像）
+    //! Step 2.2 :计算fast角点，利用四叉树删减特征点，计算旋转方向，为之后的计算描述子做准备
+    //! Step 2.3 :高斯模糊化
+    //! Step 2.4 :计算描述子
+    //! Step 2.5 :对非第0层图像中的特征点的坐标恢复到第0层图像（原图像）的坐标系下，估计是为了之后的使用
     if(mState==NOT_INITIALIZED || mState==NO_IMAGES_YET)
         mCurrentFrame = Frame(mImGray,timestamp,mpIniORBextractor,mpORBVocabulary,mK,mDistCoef,mbf,mThDepth);
     else
         mCurrentFrame = Frame(mImGray,timestamp,mpORBextractorLeft,mpORBVocabulary,mK,mDistCoef,mbf,mThDepth);
-
+    
+    //! Step 3 ：跟踪
     Track();
 
     return mCurrentFrame.mTcw.clone();
@@ -280,6 +288,7 @@ void Tracking::Track()
 
     if(mState==NOT_INITIALIZED)
     {
+        //! Step 1：地图初始化
         if(mSensor==System::STEREO || mSensor==System::RGBD)
             StereoInitialization();
         else
@@ -300,18 +309,23 @@ void Tracking::Track()
         {
             // Local Mapping is activated. This is the normal behaviour, unless
             // you explicitly activate the "only tracking" mode.
-
+            //! Step 2：跟踪进入正常SLAM模式，有地图更新
             if(mState==OK)
             {
                 // Local Mapping might have changed some MapPoints tracked in last frame
+                //!Step 2.1 检查并更新上一帧被替换的MapPoints
+                //!局部建图线程则可能会对原有的地图点进行替换.在这里进行检查
                 CheckReplacedInLastFrame();
+                //!Step 2.2 运动模型是空的或刚完成重定位，跟踪参考关键帧；否则恒速模型跟踪
+                //!第一个条件,如果运动模型为空,说明是刚初始化开始，或者已经跟丢了
+                //!第二个条件,如果当前帧紧紧地跟着在重定位的帧的后面，我们将重定位帧来恢复位姿
 
                 if(mVelocity.empty() || mCurrentFrame.mnId<mnLastRelocFrameId+2)
                 {
                     bOK = TrackReferenceKeyFrame();
                 }
                 else
-                {
+                {   //!用最近的普通帧来跟踪当前的普通帧
                     bOK = TrackWithMotionModel();
                     if(!bOK)
                         bOK = TrackReferenceKeyFrame();

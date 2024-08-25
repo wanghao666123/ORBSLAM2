@@ -767,11 +767,12 @@ vector<cv::KeyPoint> ORBextractor::DistributeOctTree(const vector<cv::KeyPoint>&
 void ORBextractor::ComputeKeyPointsOctTree(vector<vector<KeyPoint> >& allKeypoints)
 {
     allKeypoints.resize(nlevels);
-
+    //! 图像网格的长度，正方形
     const float W = 30;
 
     for (int level = 0; level < nlevels; ++level)
     {
+        //!计算边界
         const int minBorderX = EDGE_THRESHOLD-3;
         const int minBorderY = minBorderX;
         const int maxBorderX = mvImagePyramid[level].cols-EDGE_THRESHOLD+3;
@@ -779,15 +780,16 @@ void ORBextractor::ComputeKeyPointsOctTree(vector<vector<KeyPoint> >& allKeypoin
 
         vector<cv::KeyPoint> vToDistributeKeys;
         vToDistributeKeys.reserve(nfeatures*10);
-
+        //!计算长和宽
         const float width = (maxBorderX-minBorderX);
         const float height = (maxBorderY-minBorderY);
-
+        //!计算长和宽方向可以分配几个网格
         const int nCols = width/W;
         const int nRows = height/W;
+        //!计算单个网格单元或子区域的实际宽度
         const int wCell = ceil(width/nCols);
         const int hCell = ceil(height/nRows);
-
+        //!遍历行
         for(int i=0; i<nRows; i++)
         {
             const float iniY =minBorderY+i*hCell;
@@ -797,7 +799,7 @@ void ORBextractor::ComputeKeyPointsOctTree(vector<vector<KeyPoint> >& allKeypoin
                 continue;
             if(maxY>maxBorderY)
                 maxY = maxBorderY;
-
+            //!遍历列
             for(int j=0; j<nCols; j++)
             {
                 const float iniX =minBorderX+j*wCell;
@@ -806,42 +808,48 @@ void ORBextractor::ComputeKeyPointsOctTree(vector<vector<KeyPoint> >& allKeypoin
                     continue;
                 if(maxX>maxBorderX)
                     maxX = maxBorderX;
-                //!fast角点提取关键点
+                //!对30*30的网格分别进行fast角点提取关键点
                 vector<cv::KeyPoint> vKeysCell;
                 FAST(mvImagePyramid[level].rowRange(iniY,maxY).colRange(iniX,maxX),
                      vKeysCell,iniThFAST,true);
-
+                //!如果这个图像块中使用默认的FAST检测阈值没有能够检测到角点，就采用更低的检测阈值
                 if(vKeysCell.empty())
                 {
                     FAST(mvImagePyramid[level].rowRange(iniY,maxY).colRange(iniX,maxX),
                          vKeysCell,minThFAST,true);
                 }
-
+                //!当前网格检测到fast角点，即特征点
                 if(!vKeysCell.empty())
                 {
                     for(vector<cv::KeyPoint>::iterator vit=vKeysCell.begin(); vit!=vKeysCell.end();vit++)
                     {
+                        //!到目前为止，这些角点的坐标都是基于图像cell的，现在我们要先将其恢复到当前的【坐标边界】下的坐标
                         (*vit).pt.x+=j*wCell;
                         (*vit).pt.y+=i*hCell;
+                        //!然后将其加入到”等待被分配“的特征点容器中
                         vToDistributeKeys.push_back(*vit);
                     }
                 }
 
             }
         }
-        //!采用四叉树均匀划分当前层的特征点，删除一些特征点
+        //!采用四叉树均匀划分当前层的特征点，删除一些特征点,使得图像中的特征点比较分散
         vector<KeyPoint> & keypoints = allKeypoints[level];
         keypoints.reserve(nfeatures);
 
         keypoints = DistributeOctTree(vToDistributeKeys, minBorderX, maxBorderX,
                                       minBorderY, maxBorderY,mnFeaturesPerLevel[level], level);
 
+        
+        
         const int scaledPatchSize = PATCH_SIZE*mvScaleFactor[level];
 
         // Add border to coordinates and scale information
+        //!获取剔除过程后保留下来的特征点数目
         const int nkps = keypoints.size();
         for(int i=0; i<nkps ; i++)
         {
+            //!对每一个保留下来的特征点，恢复到相对于当前图层“边缘扩充图像下”的坐标系的坐标
             keypoints[i].pt.x+=minBorderX;
             keypoints[i].pt.y+=minBorderY;
             keypoints[i].octave=level;
@@ -1052,9 +1060,13 @@ void ORBextractor::operator()( InputArray _image, InputArray _mask, vector<KeyPo
     assert(image.type() == CV_8UC1 );
 
     // Pre-compute the scale pyramid
-    //!对图像金字塔每一层的图像都进行扩充
+    //! step1：构建图像金字塔得到每一帧图像的金字塔每一层扩充之后的图像
+    //! step1.1：对第0层的原始图像进行扩充
+    //! step1.2：对第1~n-1层的原始图像根据缩放因子进行缩放和扩充
     ComputePyramid(image);
-    //!计算fast角点，利用四叉树删减特征点，计算旋转方向，为之后的计算描述子做准备
+    //! step2：计算fast角点，利用四叉树删减特征点，计算旋转方向，为之后的计算描述子做准备
+    
+    //! 存储所有的特征点，注意此处为二维的vector，第一维存储的是金字塔的层数，第二维存储的是那一层金字塔图像里提取的所有特征点
     vector < vector<KeyPoint> > allKeypoints;
     ComputeKeyPointsOctTree(allKeypoints);
     //ComputeKeyPointsOld(allKeypoints);
@@ -1062,16 +1074,18 @@ void ORBextractor::operator()( InputArray _image, InputArray _mask, vector<KeyPo
     Mat descriptors;
 
     int nkeypoints = 0;
+    //!开始遍历每层图像金字塔，并且累加每层的特征点个数
     for (int level = 0; level < nlevels; ++level)
         nkeypoints += (int)allKeypoints[level].size();
     if( nkeypoints == 0 )
         _descriptors.release();
     else
     {
+        //!创建这个存储描述子的矩阵
         _descriptors.create(nkeypoints, 32, CV_8U);
         descriptors = _descriptors.getMat();
     }
-
+    //!将每帧图像的所有层的特征点数目保存下来
     _keypoints.clear();
     _keypoints.reserve(nkeypoints);
 
@@ -1097,6 +1111,7 @@ void ORBextractor::operator()( InputArray _image, InputArray _mask, vector<KeyPo
         offset += nkeypointsLevel;
 
         // Scale keypoint coordinates
+        //!对非第0层图像中的特征点的坐标恢复到第0层图像（原图像）的坐标系下
         if (level != 0)
         {
             float scale = mvScaleFactor[level]; //getScale(level, firstLevel, scaleFactor);
@@ -1109,30 +1124,39 @@ void ORBextractor::operator()( InputArray _image, InputArray _mask, vector<KeyPo
         _keypoints.insert(_keypoints.end(), keypoints.begin(), keypoints.end());
     }
 }
-
+//! 构建图像金字塔得到每一帧图像的金字塔每一层扩充之后的图像
 void ORBextractor::ComputePyramid(cv::Mat image)
 {
     for (int level = 0; level < nlevels; ++level)
     {
         float scale = mvInvScaleFactor[level];
+        //! 对原始图像缩放后的大小
         Size sz(cvRound((float)image.cols*scale), cvRound((float)image.rows*scale));
+        //! 扩充之后的尺寸大小
         Size wholeSize(sz.width + EDGE_THRESHOLD*2, sz.height + EDGE_THRESHOLD*2);
+        //! 用来保存扩充后的图像数据。
         Mat temp(wholeSize, image.type()), masktemp;
-        mvImagePyramid[level] = temp(Rect(EDGE_THRESHOLD, EDGE_THRESHOLD, sz.width, sz.height));
+        //! mvImagePyramid保存的应该是每层经过扩充之后的图像，源代码有错误
+        // mvImagePyramid[level] = temp(Rect(EDGE_THRESHOLD, EDGE_THRESHOLD, sz.width, sz.height));
 
         // Compute the resized image
         if( level != 0 )
         {
-            resize(mvImagePyramid[level-1], mvImagePyramid[level], sz, 0, 0, INTER_LINEAR);
-
+            //! 根据缩放因子对每层图像进行缩放，源代码有错误
+            // resize(mvImagePyramid[level-1], mvImagePyramid[level], sz, 0, 0, INTER_LINEAR);
+            resize(image, mvImagePyramid[level], sz, 0, 0, INTER_LINEAR);
+            //! 进行扩充，方便之后的边界寻找fast角点
             copyMakeBorder(mvImagePyramid[level], temp, EDGE_THRESHOLD, EDGE_THRESHOLD, EDGE_THRESHOLD, EDGE_THRESHOLD,
                            BORDER_REFLECT_101+BORDER_ISOLATED);            
         }
         else
         {
+            //! 对第0层的原始图像进行扩充
             copyMakeBorder(image, temp, EDGE_THRESHOLD, EDGE_THRESHOLD, EDGE_THRESHOLD, EDGE_THRESHOLD,
                            BORDER_REFLECT_101);            
         }
+        //! 新增代码
+        mvImagePyramid[level] = temp;
     }
 
 }

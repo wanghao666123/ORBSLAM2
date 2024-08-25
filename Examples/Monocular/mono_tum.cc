@@ -19,16 +19,16 @@
 */
 
 
-#include<iostream>  //用于输入和输出操作
-#include<algorithm> //包含了一组通用算法的定义和实现，这些算法可以对容器（如数组、std::vector等）进行操作
-#include<fstream>   //用于文件输入和输出操作
-#include<chrono>    //用于处理时间点、时间间隔和时钟
+#include<iostream>  
+#include<algorithm> 
+#include<fstream>   
+#include<chrono>    
 
-#include<opencv2/core/core.hpp> //用于图像处理和计算机视觉应用
+#include<opencv2/core/core.hpp> 
 
-#include<System.h>  //它通常包含了主要的系统类或与 SLAM 系统相关的定义。
+#include<System.h>  
 
-using namespace std; //它用于指示编译器使用标准库（std 命名空间）中的所有符号，而不需要显式地在每个标准库的成员前加上 std:: 前缀。
+using namespace std; 
 
 void LoadImages(const string &strFile, vector<string> &vstrImageFilenames,
                 vector<double> &vTimestamps);
@@ -67,7 +67,7 @@ int main(int argc, char **argv)
     int nImages = vstrImageFilenames.size();            
 
     //! 初始化整个slam系统
-    //! 1. 根据第三方库建立一个新的ORB字典，生成树，暂时先不管
+    //! 1. 根据第三方库建立一个新的ORB字典，生成树
     //! 2. 根据预训练好的字典大小设置关键帧数据库，位置后的重定位和回环检测做准备
     //! 3. 创建地图信息
     //! 4. 创建帧绘制器和地图绘制器将会被可视化的Viewer所使用 先不管
@@ -110,6 +110,10 @@ int main(int argc, char **argv)
 
         // Pass the image to the SLAM system
         //! 重要，追踪线程
+        //! 1. 检查是否开启纯定位或停用纯定位模式
+        //! 2. 检查是否复位
+        //! 3. 开始进行真正意义上的追踪线程
+        //! 4. 更新追踪状态，追踪到每帧图像的特征点对应的地图点，已经经过畸变矫正的特征点集合
         SLAM.TrackMonocular(im,tframe);
 
 #ifdef COMPILEDWITHC11
@@ -137,6 +141,7 @@ int main(int argc, char **argv)
     SLAM.Shutdown();
 
     // Tracking time statistics
+    //! 计算追踪总时间和平均时间
     sort(vTimesTrack.begin(),vTimesTrack.end());
     float totaltime = 0;
     for(int ni=0; ni<nImages; ni++)
@@ -148,6 +153,7 @@ int main(int argc, char **argv)
     cout << "mean tracking time: " << totaltime/nImages << endl;
 
     // Save camera trajectory
+    //! 保存轨迹信息
     SLAM.SaveKeyFrameTrajectoryTUM("KeyFrameTrajectory.txt");
 
     return 0;

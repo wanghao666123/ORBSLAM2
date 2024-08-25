@@ -81,7 +81,7 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
     //Load ORB Vocabulary
     cout << endl << "Loading ORB Vocabulary. This could take a while..." << endl;
 
-    //!根据第三方库建立一个新的ORB字典，生成树，暂时先不管
+    //!根据第三方库建立一个新的ORB字典，生成树
     mpVocabulary = new ORBVocabulary();
     bool bVocLoad = mpVocabulary->loadFromTextFile(strVocFile);
     if(!bVocLoad)
@@ -93,7 +93,7 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
     cout << "Vocabulary loaded!" << endl << endl;
 
     //Create KeyFrame Database
-    //! 根据预训练好的字典大小设置关键帧数据库，位置后的重定位和回环检测做准备，并且将mpKeyFrameDatabase指向该数据库
+    //! 根据预训练好的字典大小设置关键帧数据库，为之后的重定位和回环检测做准备，并且将mpKeyFrameDatabase指向该数据库
     mpKeyFrameDatabase = new KeyFrameDatabase(*mpVocabulary);
 
     //Create the Map
@@ -278,7 +278,7 @@ cv::Mat System::TrackMonocular(const cv::Mat &im, const double &timestamp)
             mbDeactivateLocalizationMode = false;
         }
     }
-    //! step2：检查是否
+    //! step2：检查是否复位
     // Check reset
     {
     unique_lock<mutex> lock(mMutexReset);
@@ -288,9 +288,10 @@ cv::Mat System::TrackMonocular(const cv::Mat &im, const double &timestamp)
         mbReset = false;
     }
     }
-
+    //! step3：开始进行真正意义上的追踪线程
     cv::Mat Tcw = mpTracker->GrabImageMonocular(im,timestamp);
 
+    //! step4：更新追踪状态，追踪到的特征点对应的地图点，已经经过畸变矫正的特征点集合
     unique_lock<mutex> lock2(mMutexState);
     mTrackingState = mpTracker->mState;
     mTrackedMapPoints = mpTracker->mCurrentFrame.mvpMapPoints;
