@@ -261,8 +261,9 @@ cv::Mat Tracking::GrabImageMonocular(const cv::Mat &im, const double &timestamp)
     //! Step 2.1 :构建图像金字塔（每层保存的都是扩充之后的图像）
     //! Step 2.2 :计算fast角点，利用四叉树删减特征点，计算旋转方向，为之后的计算描述子做准备
     //! Step 2.3 :高斯模糊化
-    //! Step 2.4 :计算描述子
-    //! Step 2.5 :对非第0层图像中的特征点的坐标恢复到第0层图像（原图像）的坐标系下，估计是为了之后的使用
+    //! Step 2.4 :计算描述子  对非第0层图像中的特征点的坐标恢复到第0层图像（原图像）的坐标系下!!! 意味着最终所有的特征点坐标都位于第0层
+    //! Step 2.5 :去畸变
+    //! Step 2.6 :将去畸变之后的特征点均匀分布在64*48的网格中，总共有64列，48行，为之后的特征匹配做准备
     if(mState==NOT_INITIALIZED || mState==NO_IMAGES_YET)
         mCurrentFrame = Frame(mImGray,timestamp,mpIniORBextractor,mpORBVocabulary,mK,mDistCoef,mbf,mThDepth);
     else
