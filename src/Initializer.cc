@@ -32,12 +32,16 @@ namespace ORB_SLAM2
 
 Initializer::Initializer(const Frame &ReferenceFrame, float sigma, int iterations)
 {
+    //!从参考帧中获取相机的内参数矩阵
     mK = ReferenceFrame.mK.clone();
-
+    //!从参考帧中获取去畸变后的特征点
     mvKeys1 = ReferenceFrame.mvKeysUn;
-
-    mSigma = sigma;
-    mSigma2 = sigma*sigma;
+    //!sigma即为标准差，通常用于描述图像特征点检测的精度或误差模型，标准差的定义是反映数据点相对于均值的偏离程度。
+    //!较小的 sigma：意味着检测精度高，误差小，特征点位置非常接近真实值。
+    //!较大的 sigma：表示较大的不确定性或测量误差，这可能是因为图像质量差、光照变化大、特征点附近纹理不够明显等原因
+    mSigma = sigma;//!1.0
+    mSigma2 = sigma*sigma;//!平方
+    //!最大迭代次数，RANSAC（随机抽样一致性算法）200
     mMaxIterations = iterations;
 }
 

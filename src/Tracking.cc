@@ -277,14 +277,18 @@ cv::Mat Tracking::GrabImageMonocular(const cv::Mat &im, const double &timestamp)
 
 void Tracking::Track()
 {
+    //!如果是第一次运行，或者图像复位过
     if(mState==NO_IMAGES_YET)
     {
         mState = NOT_INITIALIZED;
     }
-
+    //!mLastProcessedState 存储了Tracking最新的状态，用于FrameDrawer中的绘制
     mLastProcessedState=mState;
 
     // Get Map Mutex -> Map cannot be changed
+    //!在针对当前已经经过特征点提取和计算描述子之后的每一帧图像，为了避免其他线程（类似于局部建图，回环检测，全局BA）可能会更新地图点，所以为了不对当前追踪线程有影响，所以进行上锁处理
+    //!疑问:这样子会不会影响地图的实时更新?
+    //!回答：主要耗时在构造帧中特征点的提取和匹配部分,在那个时候地图是没有被上锁的,有足够的时间更新地图
     unique_lock<mutex> lock(mpMap->mMutexMapUpdate);
 
     if(mState==NOT_INITIALIZED)
@@ -293,7 +297,7 @@ void Tracking::Track()
         if(mSensor==System::STEREO || mSensor==System::RGBD)
             StereoInitialization();
         else
-            MonocularInitialization();
+            MonocularInitialization();//!单目初始化
 
         mpFrameDrawer->Update(this);
 
@@ -579,31 +583,39 @@ void Tracking::StereoInitialization()
 
 void Tracking::MonocularInitialization()
 {
-
+    //!Step 1 如果单目初始器还没有被创建，则创建。后面如果重新初始化时会清掉这个
     if(!mpInitializer)
     {
         // Set Reference Frame
         if(mCurrentFrame.mvKeys.size()>100)
-        {
+        {   
+            //!初始化需要两帧，分别是mInitialFrame，mCurrentFrame
+            //!其中Frame主要干了两件事：
+            //!1. 保存的应该是每个网格对应的特征点索引号
+            //!2. 如果当前帧有位姿信息 即世界坐标系到相机坐标系的变换矩阵 就将该变换矩阵分解成 1. 世界坐标系到相机坐标系的旋转矩阵 2. 世界坐标系到相机坐标系的平移向量 3. 还要计算从相机坐标系到世界坐标系的变换矩阵，并且其中的平移向量就是当前相机光心在世界坐标系下的坐标
             mInitialFrame = Frame(mCurrentFrame);
+            //!将当前帧记录为上一帧
             mLastFrame = Frame(mCurrentFrame);
+            //!将当前帧也就是上一帧的所有特征点坐标保存在mvbPrevMatched中，其中mvKeysUn为已经经过去畸变之后的特征点
             mvbPrevMatched.resize(mCurrentFrame.mvKeysUn.size());
             for(size_t i=0; i<mCurrentFrame.mvKeysUn.size(); i++)
                 mvbPrevMatched[i]=mCurrentFrame.mvKeysUn[i].pt;
 
             if(mpInitializer)
                 delete mpInitializer;
-
+            //!由当前帧构造初始器 sigma:1.0（标准差） iterations:200（最大迭代次数）
             mpInitializer =  new Initializer(mCurrentFrame,1.0,200);
-
+            //!初始化为-1 表示没有任何匹配。这里面存储的是匹配的点的id
             fill(mvIniMatches.begin(),mvIniMatches.end(),-1);
 
             return;
         }
     }
     else
-    {   //TODO:这里先待定
+    {   
         // Try to initialize
+        //!mCurrentFrame已经是第二帧图像了
+        //!Step 2 如果当前帧特征点数太少（不超过100），则重新构造初始器
         if((int)mCurrentFrame.mvKeys.size()<=100)
         {
             delete mpInitializer;
@@ -613,7 +625,10 @@ void Tracking::MonocularInitialization()
         }
 
         // Find correspondences
+        //!0.9：在ORB特征匹配中，每个特征点都会找到与它最相似的两个匹配点（即最近邻和次近邻）。匹配时通过比较最近邻距离和次近邻距离的比值来判断匹配的可靠性。这个比例阈值设置为 0.9，表示只有当最近邻和次近邻的距离比小于 0.9 时，该匹配才被认为是可靠的。
+        //!true: 这个布尔参数用于指定是否考虑ORB描述子的方向信息。在ORB特征中，描述子的方向是指该特征点在图像中的角度方向。当这个参数为 true 时，ORBmatcher会在匹配过程中考虑方向信息，使得匹配对不仅在特征空间上相似，而且具有相似的方向。这可以提高匹配的精度。
         ORBmatcher matcher(0.9,true);
+        //!进行特征点匹配
         int nmatches = matcher.SearchForInitialization(mInitialFrame,mCurrentFrame,mvbPrevMatched,mvIniMatches,100);
 
         // Check if there are enough correspondences

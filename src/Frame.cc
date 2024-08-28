@@ -51,9 +51,9 @@ Frame::Frame(const Frame &frame)
 {
     for(int i=0;i<FRAME_GRID_COLS;i++)
         for(int j=0; j<FRAME_GRID_ROWS; j++)
-            mGrid[i][j]=frame.mGrid[i][j];
+            mGrid[i][j]=frame.mGrid[i][j];//!保存的应该是每个网格对应的特征点索引号
 
-    if(!frame.mTcw.empty())
+    if(!frame.mTcw.empty())//!如果当前帧有位姿信息 即世界坐标系到相机坐标系的变换矩阵 就将该变换矩阵分解成 1. 世界坐标系到相机坐标系的旋转矩阵 2. 世界坐标系到相机坐标系的平移向量 3. 还要计算从相机坐标系到世界坐标系的变换矩阵，并且其中的平移向量就是当前相机光心在世界坐标系下的坐标
         SetPose(frame.mTcw);
 }
 
@@ -270,12 +270,17 @@ void Frame::ExtractORB(int flag, const cv::Mat &im)
 
 void Frame::SetPose(cv::Mat Tcw)
 {
-    mTcw = Tcw.clone();
-    UpdatePoseMatrices();
+    mTcw = Tcw.clone();//!该矩阵mTcw是Tcw矩阵的深拷贝。
+    UpdatePoseMatrices();//!开始更新Rcw，tcw，Ow
 }
 
 void Frame::UpdatePoseMatrices()
 { 
+    //!mOw：    当前相机光心在世界坐标系下坐标
+    //!mTcw：   世界坐标系到相机坐标系的变换矩阵
+    //!mRcw：   世界坐标系到相机坐标系的旋转矩阵
+    //!mtcw：   世界坐标系到相机坐标系的平移向量
+    //!mRwc：   相机坐标系到世界坐标系的旋转矩阵
     mRcw = mTcw.rowRange(0,3).colRange(0,3);
     mRwc = mRcw.t();
     mtcw = mTcw.rowRange(0,3).col(3);
