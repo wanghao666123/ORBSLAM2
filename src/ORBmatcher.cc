@@ -405,45 +405,54 @@ int ORBmatcher::SearchByProjection(KeyFrame* pKF, cv::Mat Scw, const vector<MapP
 int ORBmatcher::SearchForInitialization(Frame &F1, Frame &F2, vector<cv::Point2f> &vbPrevMatched, vector<int> &vnMatches12, int windowSize)
 {
     int nmatches=0;
+    //!F1中特征点和F2中匹配关系，注意是按照F1特征点数目分配空间
     vnMatches12 = vector<int>(F1.mvKeysUn.size(),-1);
-
+    //!Step 1 构建旋转直方图，HISTO_LENGTH = 30,初始化一个旋转直方图来统计角度差。通常情况下，这个直方图是一个具有 30 个桶（bins）的数组，每个桶代表 12 度的旋转范围（360度 / 30 = 12度）。
     vector<int> rotHist[HISTO_LENGTH];
     for(int i=0;i<HISTO_LENGTH;i++)
-        rotHist[i].reserve(500);
+        rotHist[i].reserve(500);//!每个桶里预分配500个，因为使用的是vector不够的话可以自动扩展容量
+    //?这里是错误的，应该改成const float factor = HISTO_LENGTH/360.0f
     const float factor = 1.0f/HISTO_LENGTH;
-
+    //!匹配点对距离，注意是按照F2特征点数目分配空间
     vector<int> vMatchedDistance(F2.mvKeysUn.size(),INT_MAX);
+    //!从帧2到帧1的反向匹配，注意是按照F2特征点数目分配空间
     vector<int> vnMatches21(F2.mvKeysUn.size(),-1);
-
+    //!遍历第一张图像的特征点
     for(size_t i1=0, iend1=F1.mvKeysUn.size(); i1<iend1; i1++)
     {
+        //!得到第一张图像的每一个特征点所对应的坐标信息(我记得好像金字塔所有层级的特征点坐标都映射到第0层)
         cv::KeyPoint kp1 = F1.mvKeysUn[i1];
+        //!获取特征点所在的金字塔层级
         int level1 = kp1.octave;
+        //!只使用第0层图像上提取的特征点
         if(level1>0)
             continue;
-
+        //!Step 2 在半径窗口内搜索当前帧F2中所有的候选匹配特征点
+        //!最终得到在第二张图像中的经过初步筛查之后的特征点对应的索引
         vector<size_t> vIndices2 = F2.GetFeaturesInArea(vbPrevMatched[i1].x,vbPrevMatched[i1].y, windowSize,level1,level1);
-
+        //!没有候选特征点，跳过
         if(vIndices2.empty())
             continue;
-
+        //!取出参考帧F1中当前遍历特征点对应的描述子
         cv::Mat d1 = F1.mDescriptors.row(i1);
-
+        //!最佳描述子匹配距离，越小越好
         int bestDist = INT_MAX;
+        //!次佳描述子匹配距离
         int bestDist2 = INT_MAX;
+        //!最佳候选特征点在F2中的index
         int bestIdx2 = -1;
-
+        //!遍历之前得到的第二张图像中的所有预选特征点
         for(vector<size_t>::iterator vit=vIndices2.begin(); vit!=vIndices2.end(); vit++)
         {
             size_t i2 = *vit;
-
+            //!取出候选特征点对应的描述子
             cv::Mat d2 = F2.mDescriptors.row(i2);
-
+            //!得到两个描述子的汉明距离
             int dist = DescriptorDistance(d1,d2);
 
             if(vMatchedDistance[i2]<=dist)
                 continue;
-
+            //!如果当前匹配距离更小，更新最佳次佳距离
             if(dist<bestDist)
             {
                 bestDist2=bestDist;
@@ -455,13 +464,18 @@ int ORBmatcher::SearchForInitialization(Frame &F1, Frame &F2, vector<cv::Point2f
                 bestDist2=dist;
             }
         }
-
+        //!最终得到第二张图像中的当前半径100的圆内所有网格的预选特征点与第一张图像的某一个特征点之间的最佳和次佳距离。
         if(bestDist<=TH_LOW)
         {
+            //!mfNNratio = 0.9 最佳距离比次佳距离要小于设定的比例，这样特征点辨识度更高
             if(bestDist<(float)bestDist2*mfNNratio)
             {
+                //!如果找到的候选特征点对应F1中特征点已经匹配过了，说明发生了重复匹配，将原来的匹配也删掉
                 if(vnMatches21[bestIdx2]>=0)
                 {
+                    //!bestIdx2存放的是第二张图像中的特征点索引
+                    //!vnMatches21[bestIdx2]存放的是第一张图像与之匹配的特征点索引
+                    //!vnMatches12[vnMatches21[bestIdx2]]存放的是第二张图像与之匹配的特征点索引
                     vnMatches12[vnMatches21[bestIdx2]]=-1;
                     nmatches--;
                 }
@@ -469,38 +483,47 @@ int ORBmatcher::SearchForInitialization(Frame &F1, Frame &F2, vector<cv::Point2f
                 vnMatches21[bestIdx2]=i1;
                 vMatchedDistance[bestIdx2]=bestDist;
                 nmatches++;
-
+                //!如果在建立matcher的时候，指定第三个参数为true，则会在匹配的时候考虑特征点的方向
                 if(mbCheckOrientation)
                 {
+                    //!计算匹配特征点的角度差，这里单位是角度°，不是弧度
                     float rot = F1.mvKeysUn[i1].angle-F2.mvKeysUn[bestIdx2].angle;
+                    //!为了保证计算出来的角度差都是在0~360度之间
                     if(rot<0.0)
                         rot+=360.0f;
+                    //!前面factor = HISTO_LENGTH/360.0f 
+                    //!bin = rot / 360.of * HISTO_LENGTH 表示当前rot被分配在第几个直方图bin 
                     int bin = round(rot*factor);
                     if(bin==HISTO_LENGTH)
                         bin=0;
+                    //!用于在程序运行时检查表达式的值
                     assert(bin>=0 && bin<HISTO_LENGTH);
+                    //!每一桶中保存的是第一张图像中的特征点索引
                     rotHist[bin].push_back(i1);
                 }
             }
         }
 
     }
-
+    //!至此已经得到第一张图像和第二张图像符合最佳距离的特征点匹配关系，如果需要考虑方向，还构建了直方图
     if(mbCheckOrientation)
     {
         int ind1=-1;
         int ind2=-1;
         int ind3=-1;
-
+        
+        //!得到直方图中30个桶中的前三个有最多特征点的索引，并分别保存在ind1，ind2，ind3。
         ComputeThreeMaxima(rotHist,HISTO_LENGTH,ind1,ind2,ind3);
 
         for(int i=0; i<HISTO_LENGTH; i++)
         {
             if(i==ind1 || i==ind2 || i==ind3)
                 continue;
+            //!剔除掉不在前三的匹配对，因为他们不符合“主流旋转方向”        
             for(size_t j=0, jend=rotHist[i].size(); j<jend; j++)
             {
                 int idx1 = rotHist[i][j];
+                //!把其之前第一张图像中的特征点对应的第二张图像的特征点的索引删掉，赋值为-1
                 if(vnMatches12[idx1]>=0)
                 {
                     vnMatches12[idx1]=-1;
@@ -512,6 +535,9 @@ int ORBmatcher::SearchForInitialization(Frame &F1, Frame &F2, vector<cv::Point2f
     }
 
     //Update prev matched
+    //!将最后通过筛选的匹配好的特征点保存到vbPrevMatched
+    //!i1：为第一张图像中的特征点索引
+    //!vbPrevMatched[i1]：经过特征匹配成功之后的第二张图像中的特征点信息（坐标）
     for(size_t i1=0, iend1=vnMatches12.size(); i1<iend1; i1++)
         if(vnMatches12[i1]>=0)
             vbPrevMatched[i1]=F2.mvKeysUn[vnMatches12[i1]].pt;
@@ -1603,7 +1629,7 @@ void ORBmatcher::ComputeThreeMaxima(vector<int>* histo, const int L, int &ind1, 
     int max1=0;
     int max2=0;
     int max3=0;
-
+    //!用于查找前三大峰值桶的索引
     for(int i=0; i<L; i++)
     {
         const int s = histo[i].size();
@@ -1629,7 +1655,7 @@ void ORBmatcher::ComputeThreeMaxima(vector<int>* histo, const int L, int &ind1, 
             ind3=i;
         }
     }
-
+    //!这样做的原因是为了确保我们选择的前三个峰值都是显著的。若某一峰值过小，意味着它的影响力不大，因此可以忽略。
     if(max2<0.1f*(float)max1)
     {
         ind2=-1;
@@ -1643,9 +1669,11 @@ void ORBmatcher::ComputeThreeMaxima(vector<int>* histo, const int L, int &ind1, 
 
 
 // Bit set count operation from
+//!Hamming distance：两个二进制串之间的汉明距离，指的是其不同位数的个数
 // http://graphics.stanford.edu/~seander/bithacks.html#CountBitsSetParallel
 int ORBmatcher::DescriptorDistance(const cv::Mat &a, const cv::Mat &b)
 {
+    //!是大小为 32 字节（256 位）的二进制向量。
     const int *pa = a.ptr<int32_t>();
     const int *pb = b.ptr<int32_t>();
 
@@ -1653,7 +1681,9 @@ int ORBmatcher::DescriptorDistance(const cv::Mat &a, const cv::Mat &b)
 
     for(int i=0; i<8; i++, pa++, pb++)
     {
+        //!相等为0,不等为1
         unsigned  int v = *pa ^ *pb;
+        //!下面的操作就是计算其中bit为1的个数了
         v = v - ((v >> 1) & 0x55555555);
         v = (v & 0x33333333) + ((v >> 2) & 0x33333333);
         dist += (((v + (v >> 4)) & 0xF0F0F0F) * 0x1010101) >> 24;

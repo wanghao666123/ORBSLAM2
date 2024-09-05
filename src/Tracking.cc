@@ -628,17 +628,18 @@ void Tracking::MonocularInitialization()
         //!0.9：在ORB特征匹配中，每个特征点都会找到与它最相似的两个匹配点（即最近邻和次近邻）。匹配时通过比较最近邻距离和次近邻距离的比值来判断匹配的可靠性。这个比例阈值设置为 0.9，表示只有当最近邻和次近邻的距离比小于 0.9 时，该匹配才被认为是可靠的。
         //!true: 这个布尔参数用于指定是否考虑ORB描述子的方向信息。在ORB特征中，描述子的方向是指该特征点在图像中的角度方向。当这个参数为 true 时，ORBmatcher会在匹配过程中考虑方向信息，使得匹配对不仅在特征空间上相似，而且具有相似的方向。这可以提高匹配的精度。
         ORBmatcher matcher(0.9,true);
-        //!进行特征点匹配
+        //!进行特征点匹配 得到成功特征点匹配的特征点数目
         int nmatches = matcher.SearchForInitialization(mInitialFrame,mCurrentFrame,mvbPrevMatched,mvIniMatches,100);
 
         // Check if there are enough correspondences
+        //!验证匹配结果，如果初始化的两帧之间的匹配点太少，重新初始化
         if(nmatches<100)
         {
             delete mpInitializer;
             mpInitializer = static_cast<Initializer*>(NULL);
             return;
         }
-
+        
         cv::Mat Rcw; // Current Camera Rotation
         cv::Mat tcw; // Current Camera Translation
         vector<bool> vbTriangulated; // Triangulated Correspondences (mvIniMatches)

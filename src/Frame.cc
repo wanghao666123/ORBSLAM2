@@ -344,53 +344,75 @@ bool Frame::isInFrustum(MapPoint *pMP, float viewingCosLimit)
 
     return true;
 }
-
+//! x：第一张图像的特征点对应的x坐标  y：第一张图像对应的特征点对应的y坐标
+//! r：在第二张图像中搜索匹配特征点的范围
+//! minLevel，maxLevel：使用的是金字塔第0层图像
+//! 大概算法流程是：
+//! 根据第一张图像的之前已经提取成功的特征点坐标，然后在第二张图像中根据该点搜索半径为100的圆中，根据每个网格中所对应的一个或多个特征点索引得到第二张图像的预选特征点
+//! 然后计算第二张图像的每一个网格中的预选特征点与之前的第一张图像的特征点坐标进行检查，如果预选特征点坐标在半径为100的圆内，则认为初步可用，并将其对应的特征点索引传给vIndices容器中。
 vector<size_t> Frame::GetFeaturesInArea(const float &x, const float  &y, const float  &r, const int minLevel, const int maxLevel) const
 {
+    //!vIndices保存的是在第二张图像中每一个网格中经过初步检查后所对应的特征点索引
     vector<size_t> vIndices;
+    //!容器大小为特征点的数目
     vIndices.reserve(N);
 
+    //!Step 1：计算半径为r圆左右上下边界所在的网格列和行的id
+    //!查找半径为r的圆左侧边界所在网格列坐标。这个地方有点绕，慢慢理解下：
+    //!(mnMaxX-mnMinX)/FRAME_GRID_COLS：表示列方向每个网格可以平均分得几个像素（肯定大于1）
+    //!mfGridElementWidthInv=FRAME_GRID_COLS/(mnMaxX-mnMinX) 是上面倒数，表示每个像素可以均分几个网格列（肯定小于1）
+	//!(x-mnMinX-r)，可以看做是从图像的左边界mnMinX到半径r的圆的左边界区域占的像素列数
+	//!两者相乘，就是求出那个半径为r的圆的左侧边界在哪个网格列中
+    //!保证nMinCellX 结果大于等于0
     const int nMinCellX = max(0,(int)floor((x-mnMinX-r)*mfGridElementWidthInv));
+    //!如果最终求得的圆的左边界所在的网格列超过了设定了上限，那么就说明计算出错，找不到符合要求的特征点，返回空vector
     if(nMinCellX>=FRAME_GRID_COLS)
         return vIndices;
-
+    //!计算圆所在的右边界网格列索引
     const int nMaxCellX = min((int)FRAME_GRID_COLS-1,(int)ceil((x-mnMinX+r)*mfGridElementWidthInv));
+    //!如果计算出的圆右边界所在的网格不合法，说明该特征点不好，直接返回空vector
     if(nMaxCellX<0)
         return vIndices;
-
+    //!计算出这个圆上边界所在的网格行的id
     const int nMinCellY = max(0,(int)floor((y-mnMinY-r)*mfGridElementHeightInv));
     if(nMinCellY>=FRAME_GRID_ROWS)
         return vIndices;
-
+    //!计算出这个圆下边界所在的网格行的id
     const int nMaxCellY = min((int)FRAME_GRID_ROWS-1,(int)ceil((y-mnMinY+r)*mfGridElementHeightInv));
     if(nMaxCellY<0)
         return vIndices;
-
+    //? 改为 const bool bCheckLevels = (minLevel>=0) || (maxLevel>=0);
     const bool bCheckLevels = (minLevel>0) || (maxLevel>=0);
-
+    //!Step 2：遍历圆形区域内的所有网格，寻找满足条件的候选特征点，并将其index放到输出里
     for(int ix = nMinCellX; ix<=nMaxCellX; ix++)
     {
         for(int iy = nMinCellY; iy<=nMaxCellY; iy++)
         {
+            //!其中mGrid[ix][iy]保存的是其网格中对应的特征点索引
             const vector<size_t> vCell = mGrid[ix][iy];
+            //!如果这个网格中没有特征点，那么跳过这个网格继续下一个
             if(vCell.empty())
                 continue;
-
+            //!如果当前网格中有特征点，则遍历当前网格中的所有特征点
             for(size_t j=0, jend=vCell.size(); j<jend; j++)
             {
+                //!其中vCell[j]为对应的特征点索引，然后mvKeysUn则得到对应的特征点相关信息，这里拿到的是第二张图像中对应的特征点信息
                 const cv::KeyPoint &kpUn = mvKeysUn[vCell[j]];
                 if(bCheckLevels)
                 {
+                    //!保证特征点是在金字塔层级minLevel和maxLevel之间，不是的话跳过
                     if(kpUn.octave<minLevel)
                         continue;
                     if(maxLevel>=0)
                         if(kpUn.octave>maxLevel)
                             continue;
                 }
-
+                //!通过检查，计算候选特征点到圆中心的距离，查看是否是在这个圆形区域之内
                 const float distx = kpUn.pt.x-x;
                 const float disty = kpUn.pt.y-y;
-
+                //!如果x方向和y方向的距离都在指定的半径之内，存储其index为候选特征点
+                //?这里改成圆形搜索区域，更合理
+                //?if(distx*distx + disty*disty < r*r)
                 if(fabs(distx)<r && fabs(disty)<r)
                     vIndices.push_back(vCell[j]);
             }
