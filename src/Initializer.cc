@@ -50,61 +50,86 @@ bool Initializer::Initialize(const Frame &CurrentFrame, const vector<int> &vMatc
 {
     // Fill structures with current keypoints and matches with reference frame
     // Reference Frame: 1, Current Frame: 2
+    //!获取当前帧的去畸变之后的特征点
     mvKeys2 = CurrentFrame.mvKeysUn;
-
+    //!mvMatches12记录匹配上的特征点对，记录的是帧2在帧1的匹配索引
     mvMatches12.clear();
+    //!预分配空间，大小和关键点数目一致mvKeys2.size()
     mvMatches12.reserve(mvKeys2.size());
+    //!记录参考帧1中的每个特征点是否有匹配的特征点
+    //!这个成员变量后面没有用到，后面只关心匹配上的特征点 	
     mvbMatched1.resize(mvKeys1.size());
     for(size_t i=0, iend=vMatches12.size();i<iend; i++)
     {
+        //!vMatches12[i]解释：i表示帧1中关键点的索引值，vMatches12[i]的值为帧2的关键点索引值
+        //!没有匹配关系的话，vMatches12[i]值为 -1
         if(vMatches12[i]>=0)
         {
+            //!mvMatches12 中只记录有匹配关系的特征点对的索引值
+            //!i表示帧1中关键点的索引值，vMatches12[i]的值为帧2的关键点索引值
             mvMatches12.push_back(make_pair(i,vMatches12[i]));
             mvbMatched1[i]=true;
         }
         else
             mvbMatched1[i]=false;
     }
-
+    //!有匹配的特征点的对数
     const int N = mvMatches12.size();
 
     // Indices for minimum set selection
+    //!新建一个容器vAllIndices存储特征点索引，并预分配空间
     vector<size_t> vAllIndices;
     vAllIndices.reserve(N);
-    vector<size_t> vAvailableIndices;
 
+    //!在RANSAC的某次迭代中，还可以被抽取来作为数据样本的特征点对的索引，所以这里起的名字叫做可用的索引
+    vector<size_t> vAvailableIndices;
+    //!初始化所有特征点对的索引，索引值0到N-1
     for(int i=0; i<N; i++)
     {
         vAllIndices.push_back(i);
     }
 
     // Generate sets of 8 points for each RANSAC iteration
+    //!mMaxIterations = 200
+    //!mMaxIterations: 这是外层向量的大小，即 mvSets 中会包含 mMaxIterations 个向量。通常这个值表示 RANSAC 的最大迭代次数
+    //!vector<size_t>(8, 0): 这是内层向量的定义。每个内层向量都是大小为 8 的 size_t 类型向量，并初始化为 0。在 RANSAC 的场景下，这可能用于存储一次迭代中的 8 个随机样本的索引。
     mvSets = vector< vector<size_t> >(mMaxIterations,vector<size_t>(8,0));
-
+    //!用于进行随机数据样本采样，设置随机数种子
     DUtils::Random::SeedRandOnce(0);
-
+    //!开始每一次的迭代
+    //!迭代mMaxIterations次，选取各自迭代时需要用到的最小数据集
     for(int it=0; it<mMaxIterations; it++)
     {
+        //!迭代开始的时候，先假设所有的点都是可用的
         vAvailableIndices = vAllIndices;
 
         // Select a minimum set
+        //!8点法 8对点 1对点有2个点(x1,y1)(x2,y2)
         for(size_t j=0; j<8; j++)
         {
+            //!随机产生某一个对点的id（索引）,范围从0到N-1
             int randi = DUtils::Random::RandomInt(0,vAvailableIndices.size()-1);
+            //!idx代表选择的是第几个特征点对，即特征点对索引
             int idx = vAvailableIndices[randi];
-
+            //!it表示第几次迭代，j表示在某一次迭代中选取的某一个点
             mvSets[it][j] = idx;
-
+            //!由于这对点在本次迭代中已经被使用了,所以我们为了避免再次抽到这个点,就在"点的可选列表"中,
+            //!将这个点原来所在的位置用vector最后一个元素的信息覆盖,并且删除尾部的元素
+            //!这样就相当于将这个点的信息从"点的可用列表"中直接删除了
             vAvailableIndices[randi] = vAvailableIndices.back();
             vAvailableIndices.pop_back();
         }
     }
-
+    //!计算fundamental 矩阵 和homography 矩阵，为了加速分别开了线程计算
     // Launch threads to compute in parallel a fundamental matrix and a homography
+    //!这两个变量用于标记在H和F的计算中哪些特征点对被认为是Inlier
     vector<bool> vbMatchesInliersH, vbMatchesInliersF;
+    //!计算出来的单应矩阵和基础矩阵的RANSAC评分，这里其实是采用重投影误差来计算的
     float SH, SF;
+    //!这两个是经过RANSAC算法后计算出来的单应矩阵和基础矩阵
     cv::Mat H, F;
-
+    //!构造线程来计算H矩阵及其得分
+    //!ref 是 std::ref，它用于传递参数的引用。这样做是为了避免对这些参数进行复制，因为线程可能需要修改这些参数的值。
     thread threadH(&Initializer::FindHomography,this,ref(vbMatchesInliersH), ref(SH), ref(H));
     thread threadF(&Initializer::FindFundamental,this,ref(vbMatchesInliersF), ref(SF), ref(F));
 
@@ -128,42 +153,64 @@ bool Initializer::Initialize(const Frame &CurrentFrame, const vector<int> &vMatc
 void Initializer::FindHomography(vector<bool> &vbMatchesInliers, float &score, cv::Mat &H21)
 {
     // Number of putative matches
+    //!获取已经成功匹配之后的特征点对数目
     const int N = mvMatches12.size();
 
     // Normalize coordinates
+    //!归一化步骤用于将特征点的原始坐标转换为零均值、单位标准差的坐标，这样可以避免在后续计算单应矩阵或基础矩阵时，由于数值的不同量级而引入的误差。
+    //!归一化后的参考帧1和当前帧2中的特征点坐标
     vector<cv::Point2f> vPn1, vPn2;
+    //!记录各自的归一化矩阵
     cv::Mat T1, T2;
+    //!进行归一化
     Normalize(mvKeys1,vPn1, T1);
     Normalize(mvKeys2,vPn2, T2);
+    //!求解归一化矩阵的逆
     cv::Mat T2inv = T2.inv();
 
     // Best Results variables
+    //!记录最佳评分
     score = 0.0;
+    //!取得历史最佳评分时,特征点对的inliers标记
     vbMatchesInliers = vector<bool>(N,false);
 
     // Iteration variables
+    //!某次迭代中，参考帧的特征点坐标
     vector<cv::Point2f> vPn1i(8);
+    //!某次迭代中，当前帧的特征点坐标
     vector<cv::Point2f> vPn2i(8);
+    //!以及计算出来的单应矩阵、及其逆矩阵
     cv::Mat H21i, H12i;
+    //!每次RANSAC记录Inliers与得分
     vector<bool> vbCurrentInliers(N,false);
     float currentScore;
 
     // Perform all RANSAC iterations and save the solution with highest score
+    //!迭代200次
     for(int it=0; it<mMaxIterations; it++)
     {
         // Select a minimum set
         for(size_t j=0; j<8; j++)
         {
+            //!从mvSets中获取当前次迭代的某个特征点对的索引信息
             int idx = mvSets[it][j];
-
+            //!mvMatches12[idx].first：为已成功匹配特征点对的第一张图像中的特征点索引
+            //!vPn1[mvMatches12[idx].first]：为第一张图像中已经经过归一化之后的特征点坐标
+            //!mvMatches12[idx].second：为已成功匹配特征点对的第二张图像中的特征点索引
+            //!vPn1[mvMatches12[idx].second]：为第二张图像中已经经过归一化之后的特征点坐标
             vPn1i[j] = vPn1[mvMatches12[idx].first];
             vPn2i[j] = vPn2[mvMatches12[idx].second];
         }
-
+        //!Hn：为经过奇异值分解得到的单应矩阵的第9列的特征向量代表的最优解H（归一化坐标系下的H）
         cv::Mat Hn = ComputeH21(vPn1i,vPn2i);
+        //!需要求得反归一化下的H
+        //!单应矩阵原理：X2=H21*X1，其中X1,X2 为归一化后的特征点    
+        //!特征点归一化：vPn1 = T1 * mvKeys1, vPn2 = T2 * mvKeys2  得到:T2 * mvKeys2 =  Hn * T1 * mvKeys1   
+        //!进一步得到:mvKeys2  = T2.inv * Hn * T1 * mvKeys1
         H21i = T2inv*Hn*T1;
+        //!然后计算逆
         H12i = H21i.inv();
-
+        //!mSigma：1.0
         currentScore = CheckHomography(H21i, H12i, vbCurrentInliers, mSigma);
 
         if(currentScore>score)
@@ -229,10 +276,11 @@ void Initializer::FindFundamental(vector<bool> &vbMatchesInliers, float &score, 
 
 cv::Mat Initializer::ComputeH21(const vector<cv::Point2f> &vP1, const vector<cv::Point2f> &vP2)
 {
+    //!得到第一张图像中的归一化之后的特征点数目，应该是8，一组为8，8点法
     const int N = vP1.size();
-
+    //!8点法，16个方程，N=8,H矩阵为3*3的，9维矩阵
     cv::Mat A(2*N,9,CV_32F);
-
+    //!看附件 3.1多视图几何基础
     for(int i=0; i<N; i++)
     {
         const float u1 = vP1[i].x;
@@ -261,11 +309,17 @@ cv::Mat Initializer::ComputeH21(const vector<cv::Point2f> &vP1, const vector<cv:
         A.at<float>(2*i+1,8) = -u2;
 
     }
-
+    //!定义输出变量
+    //!u：矩阵U 奇异值分解的左边
+    //!w：奇异值矩阵 奇异值分解的中间
+    //!vt：矩阵V^T 奇异值分解的右边
     cv::Mat u,w,vt;
-
+    //!MODIFY_A是指允许计算函数可以修改待分解的矩阵，官方文档上说这样可以加快计算速度、节省内存
+    //!FULL_UV=把U和VT补充成单位正交方阵
     cv::SVDecomp(A,w,u,vt,cv::SVD::MODIFY_A | cv::SVD::FULL_UV);
-
+    //!从矩阵 vt 中提取第 9 个奇异向量，并将其转换为 3×33×3 的矩阵形式
+    //!返回最小奇异值所对应的右奇异向量
+    //!注意前面说的是右奇异值矩阵的最后一列，但是在这里因为是vt，转置后了，所以是行；由于A有9列数据，故最后一列的下标为8
     return vt.row(8).reshape(0, 3);
 }
 
@@ -308,8 +362,9 @@ cv::Mat Initializer::ComputeF21(const vector<cv::Point2f> &vP1,const vector<cv::
 
 float Initializer::CheckHomography(const cv::Mat &H21, const cv::Mat &H12, vector<bool> &vbMatchesInliers, float sigma)
 {   
+    //!得到匹配成功的特征点对数
     const int N = mvMatches12.size();
-
+    //!将输入的两个 3×33×3 单应矩阵 H21 和 H12 的元素提取出来，以便后续使用。
     const float h11 = H21.at<float>(0,0);
     const float h12 = H21.at<float>(0,1);
     const float h13 = H21.at<float>(0,2);
@@ -330,8 +385,9 @@ float Initializer::CheckHomography(const cv::Mat &H21, const cv::Mat &H12, vecto
     const float h32inv = H12.at<float>(2,1);
     const float h33inv = H12.at<float>(2,2);
 
+    //!给特征点对的Inliers标记预分配空间
     vbMatchesInliers.resize(N);
-
+    //!初始化score值
     float score = 0;
 
     const float th = 5.991;
@@ -752,10 +808,12 @@ void Initializer::Triangulate(const cv::KeyPoint &kp1, const cv::KeyPoint &kp2, 
 
 void Initializer::Normalize(const vector<cv::KeyPoint> &vKeys, vector<cv::Point2f> &vNormalizedPoints, cv::Mat &T)
 {
+    //!计算特征点X,Y坐标的均值 meanX, meanY
     float meanX = 0;
     float meanY = 0;
+    //!获取当前帧的所有特征点数目
     const int N = vKeys.size();
-
+    //!设置用来存储归一后特征点的向量大小，和归一化前保持一致
     vNormalizedPoints.resize(N);
 
     for(int i=0; i<N; i++)
@@ -763,10 +821,10 @@ void Initializer::Normalize(const vector<cv::KeyPoint> &vKeys, vector<cv::Point2
         meanX += vKeys[i].pt.x;
         meanY += vKeys[i].pt.y;
     }
-
+    //!计算X、Y坐标的均值
     meanX = meanX/N;
     meanY = meanY/N;
-
+    //!计算特征点X,Y坐标离均值的平均偏离程度 meanDevX, meanDevY，注意不是标准差
     float meanDevX = 0;
     float meanDevY = 0;
 
@@ -774,11 +832,11 @@ void Initializer::Normalize(const vector<cv::KeyPoint> &vKeys, vector<cv::Point2
     {
         vNormalizedPoints[i].x = vKeys[i].pt.x - meanX;
         vNormalizedPoints[i].y = vKeys[i].pt.y - meanY;
-
+        //!累计这些特征点偏离横纵坐标均值的程度
         meanDevX += fabs(vNormalizedPoints[i].x);
         meanDevY += fabs(vNormalizedPoints[i].y);
     }
-
+    //!求出平均到每个点上，其坐标偏离横纵坐标均值的程度；将其倒数作为一个尺度缩放因子
     meanDevX = meanDevX/N;
     meanDevY = meanDevY/N;
 
@@ -787,10 +845,14 @@ void Initializer::Normalize(const vector<cv::KeyPoint> &vKeys, vector<cv::Point2
 
     for(int i=0; i<N; i++)
     {
+        //!对，就是简单地对特征点的坐标进行进一步的缩放
         vNormalizedPoints[i].x = vNormalizedPoints[i].x * sX;
         vNormalizedPoints[i].y = vNormalizedPoints[i].y * sY;
     }
-
+    //!计算归一化矩阵：其实就是前面做的操作用矩阵变换来表示而已
+    //!|sX  0  -meanx*sX|
+    //!|0   sY -meany*sY|
+    //!|0   0      1    |
     T = cv::Mat::eye(3,3,CV_32F);
     T.at<float>(0,0) = sX;
     T.at<float>(1,1) = sY;
