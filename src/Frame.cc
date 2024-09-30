@@ -289,59 +289,85 @@ void Frame::UpdatePoseMatrices()
 
 bool Frame::isInFrustum(MapPoint *pMP, float viewingCosLimit)
 {
+    //!mbTrackInView是决定一个地图点是否进行重投影的标志
+    //!这个标志的确定要经过多个函数的确定，isInFrustum()只是其中的一个验证关卡。这里默认设置为否
     pMP->mbTrackInView = false;
 
+    //!这个函数都是除了当前帧的地图点的其他所有局部地图点在当前帧的一系列操作，都是当前帧！！！
     // 3D in absolute coordinates
+    //!获得这个地图点的世界坐标
     cv::Mat P = pMP->GetWorldPos(); 
 
     // 3D in camera coordinates
+    //!根据当前帧(粗糙)位姿转化到当前相机坐标系下的三维点Pc 
     const cv::Mat Pc = mRcw*P+mtcw;
     const float &PcX = Pc.at<float>(0);
     const float &PcY= Pc.at<float>(1);
     const float &PcZ = Pc.at<float>(2);
 
     // Check positive depth
+    //!关卡一：将这个地图点变换到当前帧的相机坐标系下，如果深度值为正才能继续下一步。
     if(PcZ<0.0f)
         return false;
 
     // Project in image and check it is not outside
+    //!关卡二：将地图点投影到当前帧的像素坐标，如果在图像有效范围内才能继续下一步。
     const float invz = 1.0f/PcZ;
     const float u=fx*PcX*invz+cx;
     const float v=fy*PcY*invz+cy;
-
+    //!判断是否在图像边界中，只要不在那么就说明无法在当前帧下进行重投影
     if(u<mnMinX || u>mnMaxX)
         return false;
     if(v<mnMinY || v>mnMaxY)
         return false;
 
     // Check distance is in the scale invariance region of the MapPoint
+    //!关卡三：计算地图点到相机中心的距离，如果在有效距离范围内才能继续下一步。
+    //!得到认为的可靠距离范围:[0.8f*mfMinDistance, 1.2f*mfMaxDistance]
+    //!其中maxDistance和minDistance为当前金字塔图层图像的最大距离和最小距离
     const float maxDistance = pMP->GetMaxDistanceInvariance();
     const float minDistance = pMP->GetMinDistanceInvariance();
+    //!得到当前地图点距离当前帧相机光心的距离,注意P，mOw都是在同一坐标系下才可以
+    //!mOw：当前相机光心在世界坐标系下坐标
     const cv::Mat PO = P-mOw;
+    //!取模就得到了距离
     const float dist = cv::norm(PO);
-
+    //!如果不在有效范围内，认为投影不可靠
     if(dist<minDistance || dist>maxDistance)
         return false;
 
-   // Check viewing angle
+    // Check viewing angle
+    //!关卡四：计算当前相机指向地图点向量和地图点的平均观测方向夹角，小于60°才能进入下一步。
+    //!世界坐标系下地图点被多个相机观测的平均观测方向
     cv::Mat Pn = pMP->GetNormal();
-
+    //!计算当前相机指向地图点向量和地图点的平均观测方向夹角的余弦值，注意平均观测方向为单位向量
+    //!PO.dot(Pn): 这部分是计算向量 PO 和 Pn 的点积（即两个向量的内积），表示这两个向量的方向关系。如果两个向量是单位向量（即长度为1），则它们的点积就是它们夹角的余弦值。
     const float viewCos = PO.dot(Pn)/dist;
-
+    //!夹角要在60°范围内，否则认为观测方向太偏了，重投影不可靠，返回false
     if(viewCos<viewingCosLimit)
         return false;
 
     // Predict scale in the image
+    //!根据地图点到光心的距离来预测一个尺度（仿照特征点金字塔层级）
+    //!主要功能是根据当前相机与地图点之间的距离，预测该地图点在当前帧中的金字塔的第几层比较合适
+    //!这里的this为mCurrentFrame，也就是当前帧
     const int nPredictedLevel = pMP->PredictScale(dist,this);
 
     // Data used by the tracking
+    //!记录计算得到的一些参数
+    //!通过置位标记 MapPoint::mbTrackInView 来表示这个地图点要被投影 
     pMP->mbTrackInView = true;
+    //!该地图点投影在当前图像（一般是左图）的像素横坐标
     pMP->mTrackProjX = u;
+    //!bf/z其实是视差，相减得到右图（如有）中对应点的横坐标  单目没有
     pMP->mTrackProjXR = u - mbf*invz;
+    //!该地图点投影在当前图像（一般是左图）的像素纵坐标
     pMP->mTrackProjY = v;
+    //!根据地图点到光心距离，预测的该地图点的尺度层级
     pMP->mnTrackScaleLevel= nPredictedLevel;
+    //!保存当前相机指向地图点向量和地图点的平均观测方向夹角的余弦值
     pMP->mTrackViewCos = viewCos;
-
+    //!执行到这里说明这个地图点在相机的视野中并且进行重投影是可靠的，返回true
     return true;
 }
 //! x：第一张图像的特征点对应的x坐标  y：第一张图像对应的特征点对应的y坐标
@@ -720,7 +746,7 @@ void Frame::ComputeStereoFromRGBD(const cv::Mat &imDepth)
         }
     }
 }
-
+//!双目和RGBD相关 暂时未看
 cv::Mat Frame::UnprojectStereo(const int &i)
 {
     const float z = mvDepth[i];
