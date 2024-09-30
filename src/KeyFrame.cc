@@ -44,7 +44,7 @@ KeyFrame::KeyFrame(Frame &F, Map *pMap, KeyFrameDatabase *pKFDB):
     mbToBeErased(false), mbBad(false), mHalfBaseline(F.mb/2), mpMap(pMap)
 {
     mnId=nNextId++;
-
+    //!根据指定的普通帧, 初始化用于加速匹配的网格对象信息; 其实就把每个网格中有的特征点的索引复制过来
     mGrid.resize(mnGridCols);
     for(int i=0; i<mnGridCols;i++)
     {
@@ -52,7 +52,7 @@ KeyFrame::KeyFrame(Frame &F, Map *pMap, KeyFrameDatabase *pKFDB):
         for(int j=0; j<mnGridRows; j++)
             mGrid[i][j] = F.mGrid[i][j];
     }
-
+    //!设置当前关键帧的位姿
     SetPose(F.mTcw);    
 }
 
@@ -60,6 +60,7 @@ void KeyFrame::ComputeBoW()
 {
     if(mBowVec.empty() || mFeatVec.empty())
     {
+        //!将描述子转换为描述子向量，其实本质上是cv:Mat->std:vector
         vector<cv::Mat> vCurrentDesc = Converter::toDescriptorVector(mDescriptors);
         // Feature vector associate features with nodes in the 4th level (from leaves up)
         // We assume the vocabulary tree has 6 levels, change the 4 otherwise
@@ -123,6 +124,7 @@ cv::Mat KeyFrame::GetTranslation()
 void KeyFrame::AddConnection(KeyFrame *pKF, const int &weight)
 {
     {
+        //!如果对应权大于阈值，对这些关键帧建立连接，并更新其它KeyFrame的mConnectedKeyFrameWeights，更新其它关键帧与当前帧的连接权重
         unique_lock<mutex> lock(mMutexConnections);
         if(!mConnectedKeyFrameWeights.count(pKF))
             mConnectedKeyFrameWeights[pKF]=weight;
@@ -131,7 +133,7 @@ void KeyFrame::AddConnection(KeyFrame *pKF, const int &weight)
         else
             return;
     }
-
+    //!连接关系变化就要更新最佳共视，主要是重新进行排序
     UpdateBestCovisibles();
 }
 
@@ -139,20 +141,24 @@ void KeyFrame::UpdateBestCovisibles()
 {
     unique_lock<mutex> lock(mMutexConnections);
     vector<pair<int,KeyFrame*> > vPairs;
+    //!对当前关键帧的某一个公视关键帧的所有共视程度进行排序
     vPairs.reserve(mConnectedKeyFrameWeights.size());
     for(map<KeyFrame*,int>::iterator mit=mConnectedKeyFrameWeights.begin(), mend=mConnectedKeyFrameWeights.end(); mit!=mend; mit++)
        vPairs.push_back(make_pair(mit->second,mit->first));
-
+    //!按照权重进行排序（默认是从小到大）
     sort(vPairs.begin(),vPairs.end());
-    list<KeyFrame*> lKFs;
-    list<int> lWs;
+    //!为什么要用链表保存？因为插入和删除操作方便，只需要修改上一节点位置，不需要移动其他元素
+    list<KeyFrame*> lKFs; //!所有连接关键帧
+    list<int> lWs;  //!所有连接关键帧对应的权重（共视地图点数目）
     for(size_t i=0, iend=vPairs.size(); i<iend;i++)
     {
+        //!push_front 后变成从大到小
         lKFs.push_front(vPairs[i].second);
         lWs.push_front(vPairs[i].first);
     }
-
+    //!权重从大到小排列的连接关键帧
     mvpOrderedConnectedKeyFrames = vector<KeyFrame*>(lKFs.begin(),lKFs.end());
+    //!从大到小排列的权重，和mvpOrderedConnectedKeyFrames一一对应
     mvOrderedWeights = vector<int>(lWs.begin(), lWs.end());    
 }
 
@@ -288,17 +294,21 @@ MapPoint* KeyFrame::GetMapPoint(const size_t &idx)
 
 void KeyFrame::UpdateConnections()
 {
+    //!关键帧-权重，权重为其它关键帧与当前关键帧共视地图点的个数，也称为共视程度
     map<KeyFrame*,int> KFcounter;
 
     vector<MapPoint*> vpMP;
 
     {
         unique_lock<mutex> lockMPs(mMutexFeatures);
+        //!获得该关键帧的所有地图点
         vpMP = mvpMapPoints;
     }
 
     //For all map points in keyframe check in which other keyframes are they seen
     //Increase counter for those keyframes
+    //!通过地图点被关键帧观测来间接统计关键帧之间的共视程度
+    //!统计每一个地图点都有多少关键帧与当前关键帧存在共视关系，统计结果放在KFcounter
     for(vector<MapPoint*>::iterator vit=vpMP.begin(), vend=vpMP.end(); vit!=vend; vit++)
     {
         MapPoint* pMP = *vit;
@@ -308,29 +318,34 @@ void KeyFrame::UpdateConnections()
 
         if(pMP->isBad())
             continue;
-
+        //!对于每一个地图点，observations记录了可以观测到该地图点的所有关键帧
         map<KeyFrame*,size_t> observations = pMP->GetObservations();
 
         for(map<KeyFrame*,size_t>::iterator mit=observations.begin(), mend=observations.end(); mit!=mend; mit++)
         {
             if(mit->first->mnId==mnId)
                 continue;
+            //!所以最后KFcounter 第一个参数表示某个关键帧，第2个参数表示该关键帧看到了多少当前帧的地图点，也就是共视程度
             KFcounter[mit->first]++;
         }
     }
 
     // This should not happen
+    //!没有共视关系，直接退出
     if(KFcounter.empty())
         return;
 
     //If the counter is greater than threshold add connection
     //In case no keyframe counter is over threshold add the one with maximum counter
-    int nmax=0;
+    int nmax=0;//!记录最高的共视程度
     KeyFrame* pKFmax=NULL;
+    //!至少有15个共视地图点才会添加共视关系
     int th = 15;
-
+    //!vPairs记录与其它关键帧共视帧数大于th的关键帧
+    //!pair<int,KeyFrame*>将关键帧的权重写在前面，关键帧写在后面方便后面排序
     vector<pair<int,KeyFrame*> > vPairs;
     vPairs.reserve(KFcounter.size());
+    //!找到对应权重最大的关键帧（共视程度最高的关键帧）
     for(map<KeyFrame*,int>::iterator mit=KFcounter.begin(), mend=KFcounter.end(); mit!=mend; mit++)
     {
         if(mit->second>nmax)
@@ -338,24 +353,27 @@ void KeyFrame::UpdateConnections()
             nmax=mit->second;
             pKFmax=mit->first;
         }
+        //!建立共视关系至少需要大于等于th个共视地图点
         if(mit->second>=th)
         {
+            //!对应权重需要大于阈值，对这些关键帧建立连接
             vPairs.push_back(make_pair(mit->second,mit->first));
             (mit->first)->AddConnection(this,mit->second);
         }
     }
-
+    //!如果没有超过阈值的权重，则对权重最大的关键帧建立连接
     if(vPairs.empty())
     {
         vPairs.push_back(make_pair(nmax,pKFmax));
         pKFmax->AddConnection(this,nmax);
     }
-
-    sort(vPairs.begin(),vPairs.end());
+    //!对满足共视程度的关键帧对更新连接关系及权重
+    sort(vPairs.begin(),vPairs.end());//!（从小到大）
     list<KeyFrame*> lKFs;
     list<int> lWs;
     for(size_t i=0; i<vPairs.size();i++)
     {
+        //!push_front 后变成了从大到小顺序
         lKFs.push_front(vPairs[i].second);
         lWs.push_front(vPairs[i].first);
     }
@@ -364,13 +382,18 @@ void KeyFrame::UpdateConnections()
         unique_lock<mutex> lockCon(mMutexConnections);
 
         // mspConnectedKeyFrames = spConnectedKeyFrames;
+        //!更新当前帧与其它关键帧的连接权重
+        //?bug 这里直接赋值，会把小于阈值的共视关系也放入mConnectedKeyFrameWeights，会增加计算量
+        //?但后续主要用mvpOrderedConnectedKeyFrames来取共视帧，对结果没影响
         mConnectedKeyFrameWeights = KFcounter;
         mvpOrderedConnectedKeyFrames = vector<KeyFrame*>(lKFs.begin(),lKFs.end());
         mvOrderedWeights = vector<int>(lWs.begin(), lWs.end());
-
+        //!更新生成树的连接
         if(mbFirstConnection && mnId!=0)
         {
+            //!初始化该关键帧的父关键帧为共视程度最高的那个关键帧
             mpParent = mvpOrderedConnectedKeyFrames.front();
+            //!建立双向连接关系，将当前关键帧作为其子关键帧
             mpParent->AddChild(this);
             mbFirstConnection = false;
         }
@@ -629,7 +652,7 @@ cv::Mat KeyFrame::UnprojectStereo(int i)
     else
         return cv::Mat();
 }
-
+//!其实过程就是对当前关键帧下所有地图点的深度进行从小到大排序,返回距离头部其中1/q处的深度值作为当前场景的平均深度
 float KeyFrame::ComputeSceneMedianDepth(const int q)
 {
     vector<MapPoint*> vpMapPoints;

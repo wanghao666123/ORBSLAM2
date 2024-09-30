@@ -252,7 +252,7 @@ cv::Mat System::TrackMonocular(const cv::Mat &im, const double &timestamp)
         cerr << "ERROR: you called TrackMonocular but input sensor was not set to Monocular." << endl;
         exit(-1);
     }
-    //! step1：检查是否开启纯定位或停用纯定位模式
+    //! step1：检查是否开启纯定位或停用纯定位模式  前提是已经经历过一次建图，不需要重复建图，只需要跟踪
     // Check mode change
     {
         unique_lock<mutex> lock(mMutexMode);

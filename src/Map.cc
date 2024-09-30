@@ -28,7 +28,7 @@ namespace ORB_SLAM2
 Map::Map():mnMaxKFid(0),mnBigChangeIdx(0)
 {
 }
-
+//!在地图中插入关键帧,同时更新关键帧的最大id
 void Map::AddKeyFrame(KeyFrame *pKF)
 {
     unique_lock<mutex> lock(mMutexMap);

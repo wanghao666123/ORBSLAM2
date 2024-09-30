@@ -124,6 +124,7 @@ protected:
      cv::Mat mNormalVector;
 
      // Best descriptor to fast matching
+     //!每个3D点也有一个描述子，但是这个3D点可以观测多个二维特征点，从中选择一个最有代表性的
      cv::Mat mDescriptor;
 
      // Reference KeyFrame

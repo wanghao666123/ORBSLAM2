@@ -1122,7 +1122,7 @@ void TemplatedVocabulary<TDescriptor,F>::transform(
 }
 
 // --------------------------------------------------------------------------
-
+//!将一幅图像所有的特征点转化为BowVector和FeatureVector
 template<class TDescriptor, class F> 
 void TemplatedVocabulary<TDescriptor,F>::transform(
   const std::vector<TDescriptor>& features,
@@ -1145,22 +1145,24 @@ void TemplatedVocabulary<TDescriptor,F>::transform(
   if(m_weighting == TF || m_weighting == TF_IDF)
   {
     unsigned int i_feature = 0;
+    //!遍历图像中所有的描述子
     for(fit = features.begin(); fit < features.end(); ++fit, ++i_feature)
     {
-      WordId id;
-      NodeId nid;
-      WordValue w; 
+      WordId id;  //!叶子节点的Word id
+      NodeId nid; //!FeatureVector 里的NodeId，用于加速搜索
+      WordValue w;  //!叶子节点Word对应的权重
       // w is the idf value if TF_IDF, 1 if TF
-      
+      //! 将当前描述子转化为Word id， Word weight，节点所属的父节点id（这里的父节点不是叶子的上一层，它距离叶子深度为levelsup）
       transform(*fit, id, w, &nid, levelsup);
       
       if(w > 0) // not stopped
       { 
+        //!如果Word 权重大于0，将其添加到BowVector 和 FeatureVector
         v.addWeight(id, w);
         fv.addFeature(nid, i_feature);
       }
     }
-    
+    //!归一化
     if(!v.empty() && !must)
     {
       // unnecessary when normalizing
