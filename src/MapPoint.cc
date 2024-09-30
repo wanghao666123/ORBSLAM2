@@ -404,6 +404,7 @@ int MapPoint::PredictScale(const float &currentDist, Frame* pF)
     float ratio;
     {
         unique_lock<mutex> lock(mMutexPos);
+        //!这可以反映出当前点相对于最大可观测距离的位置。
         ratio = mfMaxDistance/currentDist;
     }
 

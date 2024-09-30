@@ -175,8 +175,10 @@ vector<KeyFrame*> KeyFrame::GetBestCovisibilityKeyFrames(const int &N)
 {
     unique_lock<mutex> lock(mMutexConnections);
     if((int)mvpOrderedConnectedKeyFrames.size()<N)
+        //!如果总数不够，就返回所有的关键帧
         return mvpOrderedConnectedKeyFrames;
     else
+        //!取前N个最强共视关键帧
         return vector<KeyFrame*>(mvpOrderedConnectedKeyFrames.begin(),mvpOrderedConnectedKeyFrames.begin()+N);
 
 }
@@ -246,27 +248,29 @@ set<MapPoint*> KeyFrame::GetMapPoints()
     }
     return s;
 }
-
+//!关键帧中，大于等于最少观测数目minObs的MapPoints的数量.这些特征点被认为追踪到了
 int KeyFrame::TrackedMapPoints(const int &minObs)
 {
     unique_lock<mutex> lock(mMutexFeatures);
 
     int nPoints=0;
     const bool bCheckObs = minObs>0;
+    //!N是当前帧中特征点的个数
     for(int i=0; i<N; i++)
     {
         MapPoint* pMP = mvpMapPoints[i];
-        if(pMP)
+        if(pMP)//!没有被删除
         {
-            if(!pMP->isBad())
+            if(!pMP->isBad())//!并且不是坏点
             {
                 if(bCheckObs)
                 {
+                    //!满足输入阈值要求的地图点计数加1
                     if(mvpMapPoints[i]->Observations()>=minObs)
                         nPoints++;
                 }
                 else
-                    nPoints++;
+                    nPoints++;//?bug
             }
         }
     }

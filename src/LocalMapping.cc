@@ -114,6 +114,7 @@ void LocalMapping::Run()
 void LocalMapping::InsertKeyFrame(KeyFrame *pKF)
 {
     unique_lock<mutex> lock(mMutexNewKFs);
+    //!Tracking线程向LocalMapping中插入关键帧是先插入到该队列中
     mlNewKeyFrames.push_back(pKF);
     mbAbortBA=true;
 }
