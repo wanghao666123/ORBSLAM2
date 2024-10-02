@@ -592,12 +592,13 @@ void KeyFrame::EraseConnection(KeyFrame* pKF)
     if(bUpdate)
         UpdateBestCovisibles();
 }
-
+//!获取某个特征点的邻域中的特征点id,其实这个和 Frame.cc 中的那个函数基本上都是一致的; r为边长（半径）
 vector<size_t> KeyFrame::GetFeaturesInArea(const float &x, const float &y, const float &r) const
 {
     vector<size_t> vIndices;
     vIndices.reserve(N);
-
+    //!计算要搜索的cell的范围
+    //!floor向下取整，mfGridElementWidthInv 为每个像素占多少个格子
     const int nMinCellX = max(0,(int)floor((x-mnMinX-r)*mfGridElementWidthInv));
     if(nMinCellX>=mnGridCols)
         return vIndices;
@@ -613,7 +614,7 @@ vector<size_t> KeyFrame::GetFeaturesInArea(const float &x, const float &y, const
     const int nMaxCellY = min((int)mnGridRows-1,(int)ceil((y-mnMinY+r)*mfGridElementHeightInv));
     if(nMaxCellY<0)
         return vIndices;
-
+    //!遍历每个cell,取出其中每个cell中的点,并且每个点都要计算是否在邻域内
     for(int ix = nMinCellX; ix<=nMaxCellX; ix++)
     {
         for(int iy = nMinCellY; iy<=nMaxCellY; iy++)

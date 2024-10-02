@@ -340,12 +340,14 @@ void Tracking::Track()
                 {   //!用最近的普通帧来跟踪当前的普通帧
                     bOK = TrackWithMotionModel();
                     if(!bOK)
+                        //!如果恒速模型跟踪失败则重新用参考关键帧跟踪
                         bOK = TrackReferenceKeyFrame();
                 }
             }
             else
             {
                 //!如果初始化成功的话，但是mState的状态不是OK的话，那么就需要重定位。
+                //!使用重定位的方法来得到当前帧的位姿
                 bOK = Relocalization();
             }
         }
@@ -1538,12 +1540,14 @@ void Tracking::UpdateLocalKeyFrames()
 bool Tracking::Relocalization()
 {
     // Compute Bag of Words Vector
+    //!计算当前帧特征点的词袋向量
     mCurrentFrame.ComputeBoW();
 
     // Relocalization is performed when tracking is lost
     // Track Lost: Query KeyFrame Database for keyframe candidates for relocalisation
+    //!用词袋找到与当前帧相似的候选关键帧
     vector<KeyFrame*> vpCandidateKFs = mpKeyFrameDB->DetectRelocalizationCandidates(&mCurrentFrame);
-
+    //!如果没有候选关键帧，则退出
     if(vpCandidateKFs.empty())
         return false;
 
@@ -1552,18 +1556,18 @@ bool Tracking::Relocalization()
     // We perform first an ORB matching with each candidate
     // If enough matches are found we setup a PnP solver
     ORBmatcher matcher(0.75,true);
-
+    //!每个关键帧的解算器
     vector<PnPsolver*> vpPnPsolvers;
     vpPnPsolvers.resize(nKFs);
-
+    //!每个关键帧和当前帧中特征点的匹配关系
     vector<vector<MapPoint*> > vvpMapPointMatches;
     vvpMapPointMatches.resize(nKFs);
-
+    //!放弃某个关键帧的标记
     vector<bool> vbDiscarded;
     vbDiscarded.resize(nKFs);
-
+    //!有效的候选关键帧数目
     int nCandidates=0;
-
+    //!遍历所有的候选关键帧，通过词袋进行快速匹配，用匹配结果初始化PnP Solver
     for(int i=0; i<nKFs; i++)
     {
         KeyFrame* pKF = vpCandidateKFs[i];
@@ -1571,7 +1575,9 @@ bool Tracking::Relocalization()
             vbDiscarded[i] = true;
         else
         {
+            //!当前帧和候选关键帧用BoW进行快速匹配，匹配结果记录在vvpMapPointMatches，nmatches表示匹配的数目
             int nmatches = matcher.SearchByBoW(pKF,mCurrentFrame,vvpMapPointMatches[i]);
+            //!如果和当前帧的匹配数小于15,那么只能放弃这个关键帧
             if(nmatches<15)
             {
                 vbDiscarded[i] = true;
@@ -1579,6 +1585,8 @@ bool Tracking::Relocalization()
             }
             else
             {
+                //!如果匹配数目够用，用匹配结果初始化EPnPsolver
+                //!为什么用EPnP? 因为计算复杂度低，精度高 暂时未看
                 PnPsolver* pSolver = new PnPsolver(mCurrentFrame,vvpMapPointMatches[i]);
                 pSolver->SetRansacParameters(0.99,10,300,4,0.5,5.991);
                 vpPnPsolvers[i] = pSolver;
