@@ -356,9 +356,9 @@ void MapPoint::UpdateNormalAndDepth()
         unique_lock<mutex> lock2(mMutexPos);
         if(mbBad)
             return;
-        observations=mObservations;//!获得观测到该地图点的所有关键帧
-        pRefKF=mpRefKF;//!观测到该点的参考关键帧（第一次创建时的关键帧）
-        Pos = mWorldPos.clone();//!地图点在世界坐标系中的位置
+        observations=mObservations; //!获得观测到该地图点的所有关键帧
+        pRefKF=mpRefKF;             //!观测到该点的参考关键帧（第一次创建时的关键帧）
+        Pos = mWorldPos.clone();    //!地图点在世界坐标系中的位置
     }
 
     if(observations.empty())
@@ -394,17 +394,17 @@ void MapPoint::UpdateNormalAndDepth()
     // 因此会希望距离相机近的点的搜索范围更大一点,距离相机更远的点的搜索范围更小一点,所以要在这里,根据点到关键帧/帧的距离来估计它在当前的关键帧/帧中,
     // 会大概处于哪个尺度
 
-    cv::Mat PC = Pos - pRefKF->GetCameraCenter();// !参考关键帧相机指向地图点的向量（在世界坐标系下的表示）
-    const float dist = cv::norm(PC);// !该点到参考关键帧相机的距离
-    const int level = pRefKF->mvKeysUn[observations[pRefKF]].octave;// !观测到该地图点的当前帧的特征点在金字塔的第几层
-    const float levelScaleFactor =  pRefKF->mvScaleFactors[level];// !当前金字塔层对应的尺度因子，scale^n，scale=1.2，n为层数
-    const int nLevels = pRefKF->mnScaleLevels;// !金字塔总层数，默认为8
+    cv::Mat PC = Pos - pRefKF->GetCameraCenter();                       //!参考关键帧相机指向地图点的向量（在世界坐标系下的表示）
+    const float dist = cv::norm(PC);                                    //!该点到参考关键帧相机的距离
+    const int level = pRefKF->mvKeysUn[observations[pRefKF]].octave;    //!观测到该地图点的当前帧的特征点在金字塔的第几层
+    const float levelScaleFactor =  pRefKF->mvScaleFactors[level];      //!当前金字塔层对应的尺度因子，scale^n，scale=1.2，n为层数
+    const int nLevels = pRefKF->mnScaleLevels;                          //!金字塔总层数，默认为8
 
     {
         unique_lock<mutex> lock3(mMutexPos);
-        mfMaxDistance = dist*levelScaleFactor;// !观测到该点的距离上限
-        mfMinDistance = mfMaxDistance/pRefKF->mvScaleFactors[nLevels-1];// !观测到该点的距离下限
-        mNormalVector = normal/n;// !获得地图点平均的观测方向
+        mfMaxDistance = dist*levelScaleFactor;                          //!观测到该点的距离上限
+        mfMinDistance = mfMaxDistance/pRefKF->mvScaleFactors[nLevels-1];//!观测到该点的距离下限
+        mNormalVector = normal/n;                                       //!获得地图点平均的观测方向
     }
 }
 

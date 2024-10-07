@@ -325,12 +325,12 @@ void Tracking::Track()
                 //!第一个条件,如果运动模型为空,说明是刚初始化开始，或者已经跟丢了
                 //!第二个条件,如果当前帧紧紧地跟着在重定位的帧的后面，我们将重定位帧来恢复位姿
                 //!mnLastRelocFrameId 上一次重定位的那一帧
-                // 参考关键帧 第一张图片认为是关键帧  第三张图片进来之后  参考第一张图片  去计算r,t,3D   
-                // 大部分-》恒速模型跟踪 第四张图片进来  第一张图片和第三张图片之间的位姿信息   目的：第三张图片和第四张图片的位姿信息  估计    
+                //!参考关键帧 第一张图片认为是关键帧  第三张图片进来之后  参考第一张图片  去计算r,t,3D   
+                //!大部分-》恒速模型跟踪 第四张图片进来  第一张图片和第三张图片之间的位姿信息   目的：第三张图片和第四张图片的位姿信息  估计    
                 
-                // 把一些图片会当成关键帧保存下来  上一个关键帧和下一个关键帧的位姿信息
+                //!把一些图片会当成关键帧保存下来  上一个关键帧和下一个关键帧的位姿信息
 
-                // 重定位跟踪   之前保存下来的关键帧去遍历，去计算在哪个关键帧附近跟丢 知道了
+                //!重定位跟踪   之前保存下来的关键帧去遍历，去计算在哪个关键帧附近跟丢 知道了
                 if(mVelocity.empty() || mCurrentFrame.mnId<mnLastRelocFrameId+2)
                 {
                     //!用最近的关键帧来跟踪当前的普通帧 参考关键帧跟踪
@@ -678,7 +678,7 @@ void Tracking::MonocularInitialization()
         cv::Mat Rcw; // Current Camera Rotation
         cv::Mat tcw; // Current Camera Translation
         vector<bool> vbTriangulated; // Triangulated Correspondences (mvIniMatches)
-
+        //!Rcw, tcw, mvIniP3D
         if(mpInitializer->Initialize(mCurrentFrame, mvIniMatches, Rcw, tcw, mvIniP3D, vbTriangulated))
         {
             //!初始化成功后，删除那些无法进行三角化的匹配点
