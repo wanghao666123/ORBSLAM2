@@ -465,12 +465,13 @@ void KeyFrame::SetErase()
 {
     {
         unique_lock<mutex> lock(mMutexConnections);
+        //!如果当前关键帧和其他的关键帧没有形成回环关系,那么就删吧
         if(mspLoopEdges.empty())
         {
             mbNotErase = false;
         }
     }
-
+    //!mbToBeErased：删除之前记录的想要删但时机不合适没有删除的帧
     if(mbToBeErased)
     {
         SetBadFlag();

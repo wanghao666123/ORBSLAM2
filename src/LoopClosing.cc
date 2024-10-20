@@ -53,7 +53,7 @@ void LoopClosing::SetLocalMapper(LocalMapping *pLocalMapper)
     mpLocalMapper=pLocalMapper;
 }
 
-
+//!回环线程主函数
 void LoopClosing::Run()
 {
     mbFinished =false;
@@ -61,6 +61,9 @@ void LoopClosing::Run()
     while(1)
     {
         // Check if there are keyframes in the queue
+        //!Loopclosing中的关键帧是LocalMapping发送过来的，LocalMapping是Tracking中发过来的
+        //!在LocalMapping中通过 InsertKeyFrame 将关键帧插入闭环检测队列mlpLoopKeyFrameQueue
+        //!Step 1 查看闭环检测队列mlpLoopKeyFrameQueue中有没有关键帧进来
         if(CheckNewKeyFrames())
         {
             // Detect loop candidates and check covisibility consistency
@@ -107,10 +110,13 @@ bool LoopClosing::DetectLoop()
         mpCurrentKF = mlpLoopKeyFrameQueue.front();
         mlpLoopKeyFrameQueue.pop_front();
         // Avoid that a keyframe can be erased while it is being process by this thread
+        //!设置当前关键帧不要在优化的过程中被删除
         mpCurrentKF->SetNotErase();
     }
 
     //If the map contains less than 10 KF or less than 10 KF have passed from last loop detection
+    //!Step 2：如果距离上次闭环没多久（小于10帧），或者map中关键帧总共还没有10帧，则不进行闭环检测
+    //!后者的体现是当mLastLoopKFid为0的时候
     if(mpCurrentKF->mnId<mLastLoopKFid+10)
     {
         mpKeyFrameDB->add(mpCurrentKF);
@@ -121,26 +127,33 @@ bool LoopClosing::DetectLoop()
     // Compute reference BoW similarity score
     // This is the lowest score to a connected keyframe in the covisibility graph
     // We will impose loop candidates to have a higher similarity than this
+    //!Step 3：遍历当前回环关键帧所有连接（>15个共视地图点）关键帧，计算当前关键帧与每个共视关键的bow相似度得分，并得到最低得分minScore
     const vector<KeyFrame*> vpConnectedKeyFrames = mpCurrentKF->GetVectorCovisibleKeyFrames();
     const DBoW2::BowVector &CurrentBowVec = mpCurrentKF->mBowVec;
     float minScore = 1;
+    //!遍历当前关键帧的所有相邻共视关键帧
     for(size_t i=0; i<vpConnectedKeyFrames.size(); i++)
     {
         KeyFrame* pKF = vpConnectedKeyFrames[i];
         if(pKF->isBad())
             continue;
+        //!取出与当前关键帧的共视关键帧的词袋向量
         const DBoW2::BowVector &BowVec = pKF->mBowVec;
-
+        //!计算两个关键帧的相似度得分；得分越低,相似度越低 调用的是Dbow库
         float score = mpORBVocabulary->score(CurrentBowVec, BowVec);
-
+        //!更新最低得分
         if(score<minScore)
             minScore = score;
     }
 
     // Query the database imposing the minimum score
+    //!Step 4：在所有关键帧中找出闭环候选帧（注意不和当前帧连接）
+    //!minScore的作用：认为和当前关键帧具有回环关系的关键帧,不应该低于当前关键帧的相邻关键帧的最低的相似度minScore
+    //!得到的这些关键帧,和当前关键帧具有较多的公共单词,并且相似度评分都挺高
     vector<KeyFrame*> vpCandidateKFs = mpKeyFrameDB->DetectLoopCandidates(mpCurrentKF, minScore);
 
     // If there are no loop candidates, just add new keyframe and return false
+    //!如果没有闭环候选帧，返回false
     if(vpCandidateKFs.empty())
     {
         mpKeyFrameDB->add(mpCurrentKF);
@@ -153,10 +166,16 @@ bool LoopClosing::DetectLoop()
     // Each candidate expands a covisibility group (keyframes connected to the loop candidate in the covisibility graph)
     // A group is consistent with a previous group if they share at least a keyframe
     // We must detect a consistent loop in several consecutive keyframes to accept it
+    //!最终筛选后得到的闭环帧
     mvpEnoughConsistentCandidates.clear();
+
+    //!ConsistentGroup数据类型为pair<set<KeyFrame*>,int>
+    //!ConsistentGroup.first对应每个“连续组”中的关键帧，ConsistentGroup.second为每个“连续组”的已连续几个的序号
 
     vector<ConsistentGroup> vCurrentConsistentGroups;
     vector<bool> vbConsistentGroup(mvConsistentGroups.size(),false);
+
+    //!Step 5.1：遍历刚才得到的每一个候选关键帧
     for(size_t i=0, iend=vpCandidateKFs.size(); i<iend; i++)
     {
         KeyFrame* pCandidateKF = vpCandidateKFs[i];
