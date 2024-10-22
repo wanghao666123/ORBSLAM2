@@ -67,6 +67,7 @@ void LoopClosing::Run()
         if(CheckNewKeyFrames())
         {
             // Detect loop candidates and check covisibility consistency
+            //!第一次传进来的关键帧是不会执行接下来的ComputeSim3等操作，会直接return false，然后在之后的关键帧进来之后才会执行
             if(DetectLoop())
             {
                // Compute similarity transformation [sR|t]
@@ -78,15 +79,15 @@ void LoopClosing::Run()
                }
             }
         }       
-
+        //!查看是否有外部线程请求复位当前线程
         ResetIfRequested();
-
+        //!查看外部线程是否有终止当前线程的请求,如果有的话就跳出这个线程的主函数的主循环
         if(CheckFinish())
             break;
 
         usleep(5000);
     }
-
+    //!运行到这里说明有外部线程请求终止当前线程,在这个函数中执行终止当前线程的一些操作
     SetFinish();
 }
 
@@ -180,45 +181,64 @@ bool LoopClosing::DetectLoop()
     {
         KeyFrame* pCandidateKF = vpCandidateKFs[i];
 
+        //!得到与该候选关键帧连接（>15个共视地图点）的关键帧(没有排序的)
         set<KeyFrame*> spCandidateGroup = pCandidateKF->GetConnectedKeyFrames();
+        //!把自己也加进去
         spCandidateGroup.insert(pCandidateKF);
-
+        //!连续性达标的标志
         bool bEnoughConsistent = false;
         bool bConsistentForSomeGroup = false;
+        //!刚开始应该没有  mvConsistentGroups.size() = 0
+        //!Step 5.3：遍历前一次闭环检测到的连续组链
         for(size_t iG=0, iendG=mvConsistentGroups.size(); iG<iendG; iG++)
         {
+            //!取出子连续组中的每一个闭环候选帧
             set<KeyFrame*> sPreviousGroup = mvConsistentGroups[iG].first;
-
+            // Step 5.4：遍历每个“子候选组”，检测子候选组中每一个关键帧在“子连续组”中是否存在
+            // 如果有一帧共同存在于“子候选组”与之前的“子连续组”，那么“子候选组”与该“子连续组”连续
             bool bConsistent = false;
+            //!spCandidateGroup是当前的子连续组 sPreviousGroup是上一次的子连续组
             for(set<KeyFrame*>::iterator sit=spCandidateGroup.begin(), send=spCandidateGroup.end(); sit!=send;sit++)
             {
+                // 如果存在，该“子候选组”与该“子连续组”相连
                 if(sPreviousGroup.count(*sit))
                 {
                     bConsistent=true;
+                    // 该“子候选组”至少与一个”子连续组“相连，跳出循环
                     bConsistentForSomeGroup=true;
                     break;
                 }
             }
-
+            //!Step 5.5：如果判定为连续，接下来判断是否达到连续的条件
             if(bConsistent)
             {
+                //!取出和当前的候选组(也就是上一次闭环候选帧组)发生"连续"关系的子连续组的"已连续次数"  应该是0
                 int nPreviousConsistency = mvConsistentGroups[iG].second;
+                //!将当前候选组连续长度在原子连续组的基础上+1
                 int nCurrentConsistency = nPreviousConsistency + 1;
                 if(!vbConsistentGroup[iG])
-                {
+                {   
+                    //!将该“子候选组”的该关键帧打上连续编号加入到“当前连续组”
                     ConsistentGroup cg = make_pair(spCandidateGroup,nCurrentConsistency);
                     vCurrentConsistentGroups.push_back(cg);
                     vbConsistentGroup[iG]=true; //this avoid to include the same group more than once
                 }
+                //!如果连续长度满足要求，那么当前的这个候选关键帧是足够靠谱的
+                //!连续性阈值 mnCovisibilityConsistencyTh=3
+                //!足够连续的标记 bEnoughConsistent
                 if(nCurrentConsistency>=mnCovisibilityConsistencyTh && !bEnoughConsistent)
                 {
+                    //!记录为达到连续条件了
                     mvpEnoughConsistentCandidates.push_back(pCandidateKF);
+                    //!标记一下，防止重复添加
                     bEnoughConsistent=true; //this avoid to insert the same candidate more than once
                 }
             }
         }
 
         // If the group is not consistent with any previous group insert with consistency counter set to zero
+        //!Step 5.6：如果该“子候选组”的所有关键帧都和上次闭环无关（不连续），vCurrentConsistentGroups 没有新添加连续关系
+        //!于是就把“子候选组”全部拷贝到 vCurrentConsistentGroups， 用于更新mvConsistentGroups，连续性计数器设为0
         if(!bConsistentForSomeGroup)
         {
             ConsistentGroup cg = make_pair(spCandidateGroup,0);
@@ -228,21 +248,23 @@ bool LoopClosing::DetectLoop()
 
     // Update Covisibility Consistent Groups
     mvConsistentGroups = vCurrentConsistentGroups;
-
-
+    
     // Add Current Keyframe to database
+    //!当前闭环检测的关键帧添加到关键帧数据库中
     mpKeyFrameDB->add(mpCurrentKF);
 
     if(mvpEnoughConsistentCandidates.empty())
     {
+        //!未检测到闭环，返回false
         mpCurrentKF->SetErase();
         return false;
     }
     else
     {
+        //!成功检测到闭环，返回true
         return true;
     }
-
+    //!多余的代码,执行不到
     mpCurrentKF->SetErase();
     return false;
 }
